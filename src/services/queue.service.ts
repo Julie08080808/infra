@@ -1,9 +1,11 @@
-import type { Track, PlaybackState } from '../types/index.ts';
-import { getPlayerService } from './player.service.ts';
-import { getMusicService } from './music.service.ts';
+import type { Track, PlaybackState } from "../types/index.ts";
+import { getPlayerService } from "./player.service.ts";
+import { getMusicService } from "./music.service.ts";
+import { log } from "../utils/logger.ts";
 
 type QueueChangeCallback = (queue: Track[]) => void;
 type PlaybackStateCallback = (state: PlaybackState) => void;
+type LyricsChangeCallback = (lyrics: any[]) => void;
 
 class QueueService {
   private static instance: QueueService;
@@ -12,8 +14,10 @@ class QueueService {
   private currentPosition = 0;
   private currentDuration = 0;
   private isPaused = false;
+  private lastEofTimestamp = 0; // 記錄 EOF 時間，用於抑制假 pause 事件
   private queueChangeCallbacks: QueueChangeCallback[] = [];
   private stateChangeCallbacks: PlaybackStateCallback[] = [];
+  private lyricsChangeCallbacks: LyricsChangeCallback[] = [];
 
   private constructor() {
     // 監聽播放器事件
@@ -25,13 +29,27 @@ class QueueService {
       if (event.duration !== undefined) {
         this.currentDuration = event.duration;
       }
-      if (event.paused !== undefined) {
-        this.isPaused = event.paused;
-      }
+
+      // EOF 處理
       if (event.eof === true) {
-        // 播放結束，自動播放下一首
-        console.log('Track ended, playing next...');
+        this.lastEofTimestamp = Date.now(); // 記錄 EOF 時間
+        log.info("Track ended, playing next...");
         this.playNext();
+      }
+
+      // Pause 處理 - 抑制 EOF 後 2 秒內的假暫停
+      if (event.paused !== undefined) {
+        // mpv 進入 idle 模式時會發送 pause: true
+        // 抑制 EOF 後 2 秒內的 pause 事件，防止覆蓋 isPlaying 狀態
+        const timeSinceEof = Date.now() - this.lastEofTimestamp;
+        if (event.paused && timeSinceEof < 2000) {
+          log.debug("Ignoring pause event after EOF", {
+            timeSinceEof,
+            threshold: 2000,
+          });
+          return; // 直接返回，不處理也不廣播
+        }
+        this.isPaused = event.paused;
       }
 
       // 廣播狀態變更
@@ -58,6 +76,13 @@ class QueueService {
    */
   onStateChange(callback: PlaybackStateCallback): void {
     this.stateChangeCallbacks.push(callback);
+  }
+
+  /**
+   * 註冊歌詞變更回調
+   */
+  onLyricsChange(callback: LyricsChangeCallback): void {
+    this.lyricsChangeCallbacks.push(callback);
   }
 
   /**
@@ -100,8 +125,8 @@ class QueueService {
       // 如果搜尋不到，建立基本的 Track 物件
       const track: Track = {
         videoId,
-        title: 'Unknown',
-        artist: 'Unknown',
+        title: "Unknown",
+        artist: "Unknown",
         duration: 0,
         thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
       };
@@ -110,11 +135,23 @@ class QueueService {
       this.queue.push(tracks[0]);
     }
 
-    console.log('Added to queue:', videoId);
+    log.info("Added to queue", { videoId });
     this.broadcastQueueChange();
 
     // 如果目前沒有播放，自動開始播放
-    if (!this.currentTrack) {
+    // 使用雙重檢查：currentTrack 為 null 且播放器未在播放
+    const playerIsPlaying = getPlayerService().isCurrentlyPlaying();
+    const shouldAutoPlay = this.currentTrack === null && !playerIsPlaying;
+
+    log.info("Auto-play check", {
+      currentTrack: this.currentTrack?.title ?? "null",
+      playerIsPlaying,
+      shouldAutoPlay,
+      queueLength: this.queue.length,
+    });
+
+    if (shouldAutoPlay) {
+      log.info("Auto-starting playback for newly added track");
       this.playNext();
     }
   }
@@ -125,7 +162,7 @@ class QueueService {
   removeFromQueue(index: number): void {
     if (index >= 0 && index < this.queue.length) {
       const removed = this.queue.splice(index, 1);
-      console.log('Removed from queue:', removed[0]?.videoId);
+      log.info("Removed from queue", { videoId: removed[0]?.videoId });
       this.broadcastQueueChange();
     }
   }
@@ -134,9 +171,18 @@ class QueueService {
    * 播放下一首
    */
   async playNext(): Promise<void> {
+    log.info("playNext called", {
+      queueLength: this.queue.length,
+      currentTrack: this.currentTrack?.title ?? "null",
+      isPaused: this.isPaused,
+    });
+
     if (this.queue.length === 0) {
-      console.log('Queue is empty, stopping playback');
+      log.info("Queue is empty, stopping playback");
       this.currentTrack = null;
+      this.currentPosition = 0;
+      this.currentDuration = 0;
+      this.isPaused = false;
       getPlayerService().stop();
       this.broadcastState();
       return;
@@ -149,17 +195,20 @@ class QueueService {
     this.currentDuration = nextTrack.duration;
     this.isPaused = false;
 
-    console.log('Playing next track:', nextTrack.title);
+    log.info("Playing next track", { title: nextTrack.title });
 
     // 廣播變更
     this.broadcastQueueChange();
     this.broadcastState();
 
+    // 獲取並廣播歌詞
+    this.fetchAndBroadcastLyrics();
+
     try {
       // 播放
       await getPlayerService().play(nextTrack.videoId);
     } catch (error) {
-      console.error('Failed to play track:', error);
+      log.error("Failed to play track", { error });
       // 播放失敗，嘗試下一首
       this.playNext();
     }
@@ -180,7 +229,7 @@ class QueueService {
    * 跳過當前歌曲
    */
   skip(): void {
-    console.log('Skipping current track');
+    log.info("Skipping current track");
     this.playNext();
   }
 
@@ -189,6 +238,25 @@ class QueueService {
    */
   setVolume(volume: number): void {
     getPlayerService().setVolume(volume);
+    this.broadcastState();
+  }
+
+  /**
+   * 跳轉到指定位置
+   */
+  seekTo(position: number): void {
+    // 驗證輸入和邊界
+    if (!Number.isFinite(position) || position < 0) {
+      console.warn("Invalid seek position:", position);
+      return;
+    }
+
+    // 限制在當前歌曲的 duration 範圍內
+    const clampedPosition = Math.min(position, this.currentDuration);
+
+    log.debug("Seeking to position", { position: clampedPosition });
+    this.currentPosition = clampedPosition;
+    getPlayerService().seek(clampedPosition);
     this.broadcastState();
   }
 
@@ -225,8 +293,26 @@ class QueueService {
     return await musicService.getLyrics(
       this.currentTrack.title,
       this.currentTrack.artist,
-      this.currentTrack.duration
+      this.currentTrack.duration,
     );
+  }
+
+  /**
+   * 獲取並廣播歌詞（異步）
+   */
+  private fetchAndBroadcastLyrics(): void {
+    // 使用異步方式獲取歌詞，避免阻塞播放
+    this.getLyrics()
+      .then((lyrics) => {
+        // 透過回調通知歌詞變更
+        for (const callback of this.lyricsChangeCallbacks) {
+          callback(lyrics);
+        }
+        log.debug("Lyrics broadcasted", { lyricsCount: lyrics.length });
+      })
+      .catch((error) => {
+        log.error("Failed to fetch lyrics", { error });
+      });
   }
 }
 

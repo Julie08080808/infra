@@ -202,15 +202,37 @@ button:disabled {
   height: 6px;
   background: #e0e0e0;
   border-radius: 3px;
-  overflow: hidden;
+  overflow: visible;
   margin-bottom: 8px;
+  cursor: pointer;
+  position: relative;
+}
+
+/* 使用 pseudo-element 擴大點擊區域 */
+.progress-bar::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  left: 0;
+  right: 0;
+  z-index: 1;
 }
 
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
   width: 0%;
-  transition: width 0.3s;
+  transition: width 0.3s, filter 0.2s;
+  pointer-events: none;
+  border-radius: 3px;
+  transform-origin: center;
+}
+
+/* 視覺回饋不改變高度，使用亮度和輕微縮放 */
+.progress-bar:hover .progress-fill {
+  filter: brightness(1.2);
+  transform: scaleY(1.3);
 }
 
 .time-display {

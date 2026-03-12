@@ -11,6 +11,7 @@ const searchInput = document.getElementById("search-input");
 const searchBtn = document.getElementById("search-btn");
 const searchResults = document.getElementById("search-results");
 const nowPlaying = document.getElementById("now-playing");
+const progressBar = document.getElementById("progress-bar");
 const progressFill = document.getElementById("progress-fill");
 const currentTime = document.getElementById("current-time");
 const durationTime = document.getElementById("duration-time");
@@ -345,6 +346,38 @@ function setVolume() {
   );
 }
 
+// 進度條跳轉
+function seekToPosition(event) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!currentState || !currentState.currentTrack) return;
+  if (!currentState.duration || currentState.duration <= 0) return;
+
+  const rect = progressBar.getBoundingClientRect();
+
+  // 防止除以零
+  if (rect.width <= 0) {
+    console.warn("Progress bar width is zero");
+    return;
+  }
+
+  const clickX = Math.max(0, event.clientX - rect.left);
+  const percentage = Math.min(1, Math.max(0, clickX / rect.width));
+  const position = percentage * currentState.duration;
+
+  // 最終安全檢查
+  if (!Number.isFinite(position) || position < 0) {
+    console.warn("Invalid calculated position:", position);
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
+      type: "seek",
+      value: position,
+    }),
+  );
+}
+
 // 事件監聽
 searchBtn.addEventListener("click", searchSongs);
 searchInput.addEventListener("keypress", (e) => {
@@ -354,6 +387,7 @@ searchInput.addEventListener("keypress", (e) => {
 playPauseBtn.addEventListener("click", togglePlayPause);
 skipBtn.addEventListener("click", skip);
 volumeSlider.addEventListener("input", setVolume);
+progressBar.addEventListener("click", seekToPosition);
 
 // 初始化
 connectWebSocket();

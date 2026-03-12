@@ -34,13 +34,21 @@
 
 ## 技術棧
 
+### 後端
 - **Runtime**: Bun
 - **Backend**: Hono (Web 框架)
 - **播放器**: mpv (音訊播放)
 - **YouTube API**: youtubei.js
 - **歌詞**: LRCLIB API
 - **即時通訊**: WebSocket
-- **Frontend**: HTML5 + Vanilla JavaScript
+
+### 前端
+- **React 19** - UI 框架
+- **TypeScript** - 類型安全
+- **Vite** - 構建工具
+- **Tailwind CSS v4** - 樣式框架
+- **Zustand** - 狀態管理
+- **COSS UI** - 設計系統
 
 ## 安裝需求
 
@@ -70,20 +78,47 @@ sudo apt install mpv
 ### 3. 安裝專案依賴
 
 ```bash
+# 後端依賴
 bun install
+
+# 前端依賴
+cd frontend && npm install && cd ..
 ```
 
 ## 使用方式
 
-### 啟動伺服器
+### 開發模式
+
+**方式一：分別啟動（推薦）**
 
 ```bash
-# 開發模式（自動重新載入）
+# 終端 1：啟動後端
 bun run dev
 
-# 生產模式
-bun run start
+# 終端 2：啟動前端
+npm run dev:frontend
 ```
+
+前端會在 http://localhost:5173 啟動，並自動代理 API 到後端 http://localhost:3000。
+
+**方式二：僅啟動後端（使用舊版 HTML5 前端）**
+
+```bash
+bun run dev
+# 訪問 http://localhost:3000 使用基礎 HTML5 版本
+```
+
+### 生產模式
+
+```bash
+# 1. 構建前端和後端
+npm run build:all
+
+# 2. 啟動生產服務器
+npm run start
+```
+
+生產模式下訪問 http://localhost:3000 即可使用完整功能的 React 前端。
 
 ### 存取 WebUI
 
@@ -195,7 +230,7 @@ youtube_music_bot/
 ├── package.json
 ├── tsconfig.json
 ├── README.md
-├── src/
+├── src/                      # 後端程式碼
 │   ├── index.ts              # 入口點
 │   ├── server.ts             # Hono server + WebSocket
 │   ├── routes/
@@ -208,10 +243,18 @@ youtube_music_bot/
 │   │   └── handler.ts        # WebSocket 事件處理
 │   └── types/
 │       └── index.ts          # 類型定義
-└── public/
-    ├── index.html            # 點歌頁面
-    ├── style.css             # 樣式
-    └── app.js                # 前端邏輯
+├── frontend/                 # React 前端
+│   ├── src/
+│   │   ├── components/       # React 組件
+│   │   ├── hooks/            # 自定義 Hooks
+│   │   ├── stores/           # Zustand 狀態管理
+│   │   ├── services/         # API 服務層
+│   │   └── types/            # 前端類型定義
+│   └── dist/                 # 構建產物（生產模式）
+└── public/                   # 舊版 HTML5 前端（保留）
+    ├── index.html
+    ├── style.css
+    └── app.js
 ```
 
 ## 常見問題

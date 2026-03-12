@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "start": "bun run dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:frontend && npm run build",
+    "start": "NODE_ENV=production bun run dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "dependencies": {
     "hono": "^4.6.17",

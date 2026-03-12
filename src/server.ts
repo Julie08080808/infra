@@ -1,20 +1,23 @@
-import { Hono } from 'hono';
-import { serveStatic } from 'hono/bun';
-import api from './routes/api.ts';
+import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
+import api from "./routes/api.ts";
 import {
   handleWebSocketMessage,
   handleWebSocketOpen,
   handleWebSocketClose,
   initializeWebSocket,
-} from './websocket/handler.ts';
+} from "./websocket/handler.ts";
 
 const app = new Hono();
 
 // 提供靜態檔案
-app.use('/*', serveStatic({ root: './public' }));
+// 生產環境使用 frontend/dist，開發環境使用 public
+const staticRoot =
+  process.env.NODE_ENV === "production" ? "./frontend/dist" : "./public";
+app.use("/*", serveStatic({ root: staticRoot }));
 
 // API 路由
-app.route('/api', api);
+app.route("/api", api);
 
 // WebSocket 路由（Bun 原生支援）
 export function createServer() {
@@ -25,11 +28,12 @@ export function createServer() {
     port: 3000,
     fetch(req, server) {
       // WebSocket 升級
-      if (req.url.endsWith('/ws')) {
+      const url = new URL(req.url);
+      if (url.pathname === "/ws") {
         const success = server.upgrade(req);
         return success
           ? undefined
-          : new Response('WebSocket upgrade failed', { status: 500 });
+          : new Response("WebSocket upgrade failed", { status: 500 });
       }
 
       // 一般 HTTP 請求

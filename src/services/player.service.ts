@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { connect, type Socket } from 'node:net';
+import { spawn, type ChildProcess } from "node:child_process";
+import { connect, type Socket } from "node:net";
+import { log } from "../utils/logger.ts";
 
 export type PlayerEventCallback = (event: {
   timePos?: number;
@@ -19,6 +20,7 @@ class PlayerService {
   private ipcConnectRetries = 0;
   private readonly maxIpcRetries = 10;
   private playSessionId = 0;
+  private eofHandled = false;
 
   private constructor() {}
 
@@ -40,7 +42,7 @@ class PlayerService {
    * 生成 IPC socket 路徑（每次播放都不同）
    */
   private getIpcPath(): string {
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       return `\\\\.\\pipe\\mpvsocket-${process.pid}-${this.playSessionId}`;
     } else {
       return `/tmp/mpvsocket-${process.pid}-${this.playSessionId}`;
@@ -52,49 +54,58 @@ class PlayerService {
    */
   private async connectIpc(): Promise<void> {
     if (!this.ipcPath) {
-      throw new Error('IPC path not set');
+      throw new Error("IPC path not set");
     }
 
     return new Promise<void>((resolve, reject) => {
       const attemptConnect = () => {
-        console.log('Attempting IPC connection:', this.ipcPath);
+        log.debug("Attempting IPC connection", { path: this.ipcPath });
 
         this.ipcSocket = connect(this.ipcPath!);
 
-        this.ipcSocket.on('connect', () => {
-          console.log('IPC socket connected');
+        this.ipcSocket.on("connect", () => {
+          log.info("IPC socket connected");
           this.ipcConnectRetries = 0;
 
           // 監聽屬性變化
-          this.sendIpcCommand(['observe_property', 1, 'time-pos']);
-          this.sendIpcCommand(['observe_property', 2, 'duration']);
-          this.sendIpcCommand(['observe_property', 3, 'pause']);
-          this.sendIpcCommand(['observe_property', 4, 'eof-reached']);
+          this.sendIpcCommand(["observe_property", 1, "time-pos"]);
+          this.sendIpcCommand(["observe_property", 2, "duration"]);
+          this.sendIpcCommand(["observe_property", 3, "pause"]);
+          this.sendIpcCommand(["observe_property", 4, "eof-reached"]);
+          this.sendIpcCommand(["observe_property", 5, "idle-active"]); // 新增：監聽 idle 狀態
 
           resolve();
         });
 
-        this.ipcSocket.on('data', (data: Buffer) => {
+        this.ipcSocket.on("data", (data: Buffer) => {
           this.handleIpcMessage(data.toString());
         });
 
-        this.ipcSocket.on('error', (err: Error) => {
-          console.log('IPC socket error:', err.message);
+        this.ipcSocket.on("error", (err: Error) => {
+          log.debug("IPC socket error", { error: err.message });
 
-          const maxRetries = process.platform === 'win32'
-            ? this.maxIpcRetries * 2
-            : this.maxIpcRetries;
+          const maxRetries =
+            process.platform === "win32"
+              ? this.maxIpcRetries * 2
+              : this.maxIpcRetries;
 
           if (this.ipcConnectRetries < maxRetries) {
             this.ipcConnectRetries++;
-            setTimeout(attemptConnect, process.platform === 'win32' ? 250 : 100);
+            setTimeout(
+              attemptConnect,
+              process.platform === "win32" ? 250 : 100,
+            );
           } else {
-            reject(new Error(`Failed to connect to IPC socket after ${maxRetries} attempts`));
+            reject(
+              new Error(
+                `Failed to connect to IPC socket after ${maxRetries} attempts`,
+              ),
+            );
           }
         });
 
-        this.ipcSocket.on('close', () => {
-          console.log('IPC socket closed');
+        this.ipcSocket.on("close", () => {
+          log.debug("IPC socket closed");
           this.ipcSocket = null;
         });
       };
@@ -108,11 +119,11 @@ class PlayerService {
    */
   private sendIpcCommand(command: unknown[]): void {
     if (!this.ipcSocket || this.ipcSocket.destroyed) {
-      console.warn('Cannot send IPC command: socket not connected');
+      log.warn("Cannot send IPC command: socket not connected");
       return;
     }
 
-    const message = JSON.stringify({ command }) + '\n';
+    const message = JSON.stringify({ command }) + "\n";
     this.ipcSocket.write(message);
   }
 
@@ -120,13 +131,22 @@ class PlayerService {
    * 處理來自 mpv 的 IPC 訊息
    */
   private handleIpcMessage(data: string): void {
-    const lines = data.trim().split('\n');
+    const lines = data.trim().split("\n");
+    log.debug("IPC message received", {
+      rawData: data.substring(0, 200),
+      lineCount: lines.length,
+    });
 
     for (const line of lines) {
       try {
         const message = JSON.parse(line);
+        log.debug("IPC parsed", {
+          event: message.event,
+          name: message.name,
+          data: message.data,
+        });
 
-        if (message.event === 'property-change') {
+        if (message.event === "property-change") {
           this.handlePropertyChange(message);
         }
       } catch (err) {
@@ -138,7 +158,15 @@ class PlayerService {
   /**
    * 處理屬性變化事件
    */
-  private handlePropertyChange(message: { name: string; data: number | boolean }): void {
+  private handlePropertyChange(message: {
+    name: string;
+    data: number | boolean;
+  }): void {
+    // 記錄所有屬性變化（除了高頻的 time-pos）
+    if (message.name !== "time-pos") {
+      log.info("Property change", { name: message.name, data: message.data });
+    }
+
     if (!this.eventCallback) return;
 
     const event: {
@@ -149,23 +177,36 @@ class PlayerService {
     } = {};
 
     switch (message.name) {
-      case 'time-pos':
+      case "time-pos":
         event.timePos = message.data as number;
         break;
 
-      case 'duration':
+      case "duration":
         event.duration = message.data as number;
         break;
 
-      case 'pause':
+      case "pause":
         event.paused = message.data as boolean;
         break;
 
-      case 'eof-reached':
+      case "eof-reached":
         event.eof = message.data as boolean;
         if (event.eof) {
           this.isPlaying = false;
-          console.log('End of file reached');
+          this.eofHandled = true;
+          log.info("End of file reached");
+        }
+        break;
+
+      case "idle-active":
+        // mpv 進入 idle 模式時作為備用 EOF 檢測
+        if (message.data === true && !this.eofHandled) {
+          log.info("mpv entered idle mode, triggering EOF fallback");
+          this.isPlaying = false;
+          this.eofHandled = true;
+          event.eof = true;
+        } else if (message.data === true) {
+          log.debug("mpv idle mode already handled via eof-reached");
         }
         break;
     }
@@ -177,7 +218,10 @@ class PlayerService {
    * 播放 YouTube 影片（只播放音訊）
    */
   async play(videoId: string, volume?: number): Promise<void> {
-    console.log('Playing:', videoId, 'volume:', volume ?? this.currentVolume);
+    log.info("Playing video", {
+      videoId,
+      volume: volume ?? this.currentVolume,
+    });
 
     // 停止當前播放
     this.stop();
@@ -192,30 +236,31 @@ class PlayerService {
     // 遞增 session ID（每次播放都有唯一的 IPC 路徑）
     this.playSessionId++;
     this.ipcPath = this.getIpcPath();
+    this.eofHandled = false;
 
     return new Promise<void>((resolve, reject) => {
       try {
         const mpvArgs = [
-          '--no-video',
-          '--no-terminal',
+          "--no-video",
+          "--no-terminal",
           `--volume=${this.currentVolume}`,
-          '--no-audio-display',
-          '--really-quiet',
-          '--msg-level=all=error',
+          "--no-audio-display",
+          "--really-quiet",
+          "--msg-level=all=error",
           `--input-ipc-server=${this.ipcPath}`,
-          '--idle=yes',
-          '--cache=yes',
-          '--cache-secs=30',
-          '--network-timeout=10',
-          '--gapless-audio=yes',
+          "--idle=yes",
+          "--cache=yes",
+          "--cache-secs=30",
+          "--network-timeout=10",
+          "--gapless-audio=yes",
           url,
         ];
 
-        const mpvCommand = process.platform === 'win32' ? 'mpv.exe' : 'mpv';
+        const mpvCommand = process.platform === "win32" ? "mpv.exe" : "mpv";
 
         const spawnedProcess = spawn(mpvCommand, mpvArgs, {
           detached: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true,
         });
 
@@ -238,31 +283,36 @@ class PlayerService {
         };
 
         // 延遲連接 IPC（Windows 需要更長時間）
-        const ipcDelay = process.platform === 'win32' ? 500 : 200;
+        const ipcDelay = process.platform === "win32" ? 500 : 200;
         setTimeout(() => {
           this.connectIpc()
             .then(() => {
-              console.log('IPC connected successfully');
+              console.log("IPC connected successfully");
               handleSuccess();
             })
-            .catch(error => {
-              console.warn('Failed to connect IPC:', error.message);
+            .catch((error) => {
+              console.warn("Failed to connect IPC:", error.message);
               // 即使 IPC 連接失敗，基本播放仍會繼續
               handleSuccess();
             });
         }, ipcDelay);
 
         // 處理 stderr
-        spawnedProcess.stderr?.on('data', (data: Buffer) => {
+        spawnedProcess.stderr?.on("data", (data: Buffer) => {
           const error = data.toString().trim();
           if (error) {
-            console.error('mpv error:', error);
+            console.error("mpv error:", error);
           }
         });
 
         // 處理進程退出
-        spawnedProcess.on('exit', (code, signal) => {
-          console.log('mpv process exited:', code, signal);
+        spawnedProcess.on("exit", (code, signal) => {
+          log.info("mpv process exited", {
+            code,
+            signal,
+            eofHandled: this.eofHandled,
+            isPlaying: this.isPlaying,
+          });
 
           if (this.mpvProcess === spawnedProcess) {
             this.isPlaying = false;
@@ -270,6 +320,14 @@ class PlayerService {
           }
 
           if (code === 0) {
+            log.info("Checking if need to trigger EOF from exit", {
+              eofHandled: this.eofHandled,
+            });
+            // 只在 IPC 未發送 eof 時才手動觸發
+            if (!this.eofHandled && this.eventCallback) {
+              log.info("Triggering EOF from process exit (fallback)");
+              this.eventCallback({ eof: true });
+            }
             handleSuccess();
           } else if (code !== null && code > 0) {
             handleError(new Error(`mpv exited with code ${code}`));
@@ -277,15 +335,15 @@ class PlayerService {
         });
 
         // 處理錯誤
-        spawnedProcess.on('error', (error: Error) => {
-          console.error('mpv process error:', error.message);
+        spawnedProcess.on("error", (error: Error) => {
+          log.error("mpv process error", { error: error.message });
 
           if (this.mpvProcess === spawnedProcess) {
             this.isPlaying = false;
             this.mpvProcess = null;
           }
 
-          if ('code' in error && error.code === 'ENOENT') {
+          if ("code" in error && error.code === "ENOENT") {
             handleError(
               new Error(
                 "mpv executable not found. Install mpv and ensure it's in PATH.",
@@ -297,9 +355,9 @@ class PlayerService {
           handleError(error);
         });
 
-        console.log('mpv process started');
+        log.debug("mpv process started");
       } catch (error) {
-        console.error('Exception in play():', error);
+        log.error("Exception in play()", { error });
         this.isPlaying = false;
         reject(error);
       }
@@ -307,23 +365,23 @@ class PlayerService {
   }
 
   pause(): void {
-    console.log('Pausing playback');
+    log.debug("Pausing playback");
     this.isPlaying = false;
     if (this.ipcSocket && !this.ipcSocket.destroyed) {
-      this.sendIpcCommand(['set_property', 'pause', true]);
+      this.sendIpcCommand(["set_property", "pause", true]);
     }
   }
 
   resume(): void {
-    console.log('Resuming playback');
+    log.debug("Resuming playback");
     this.isPlaying = true;
     if (this.ipcSocket && !this.ipcSocket.destroyed) {
-      this.sendIpcCommand(['set_property', 'pause', false]);
+      this.sendIpcCommand(["set_property", "pause", false]);
     }
   }
 
   stop(): void {
-    console.log('Stopping playback');
+    log.debug("Stopping playback");
 
     // 關閉 IPC socket
     if (this.ipcSocket && !this.ipcSocket.destroyed) {
@@ -334,12 +392,12 @@ class PlayerService {
     // 終止 mpv 進程
     if (this.mpvProcess) {
       try {
-        this.mpvProcess.kill('SIGTERM');
+        this.mpvProcess.kill("SIGTERM");
         this.mpvProcess = null;
         this.isPlaying = false;
-        console.log('mpv process killed');
+        log.debug("mpv process killed");
       } catch (error) {
-        console.error('Error killing mpv process:', error);
+        log.error("Error killing mpv process", { error });
       }
     }
 
@@ -349,10 +407,29 @@ class PlayerService {
 
   setVolume(volume: number): void {
     this.currentVolume = Math.max(0, Math.min(100, volume));
-    console.log('Setting volume to:', this.currentVolume);
+    log.debug("Setting volume", { volume: this.currentVolume });
 
     if (this.ipcSocket && !this.ipcSocket.destroyed) {
-      this.sendIpcCommand(['set_property', 'volume', this.currentVolume]);
+      this.sendIpcCommand(["set_property", "volume", this.currentVolume]);
+    }
+  }
+
+  seek(position: number): void {
+    // 檢查播放狀態
+    if (!this.isPlaying || !this.mpvProcess) {
+      log.warn("Cannot seek: no active playback");
+      return;
+    }
+
+    // 驗證輸入
+    if (!Number.isFinite(position) || position < 0) {
+      log.warn("Invalid seek position", { position });
+      return;
+    }
+
+    log.debug("Seeking to position", { position });
+    if (this.ipcSocket && !this.ipcSocket.destroyed) {
+      this.sendIpcCommand(["seek", position, "absolute"]);
     }
   }
 
