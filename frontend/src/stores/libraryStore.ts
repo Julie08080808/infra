@@ -22,6 +22,7 @@ import {
   mergeLibraryPayload,
   mergePairedDevices,
 } from "@/utils/librarySync";
+import { getCurrentRequester } from "@/utils/requester";
 import { reorderItems } from "@/utils/reorder";
 
 const MAX_HISTORY_ENTRIES = 1000;
@@ -486,22 +487,4 @@ export function getCurrentDevice(snapshot: LibrarySnapshot | null): PairedDevice
   );
 }
 
-export function getCurrentRequester(
-  snapshot: LibrarySnapshot | null,
-): Track["requestedBy"] | undefined {
-  if (!snapshot) {
-    return undefined;
-  }
-
-  const profileId = snapshot.profileId.trim();
-  const profileName = snapshot.profileName.trim();
-
-  if (!profileId || !profileName) {
-    return undefined;
-  }
-
-  return {
-    profileId,
-    profileName,
-  };
-}
+export { getCurrentRequester };

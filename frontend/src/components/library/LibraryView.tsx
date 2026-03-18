@@ -1260,47 +1260,49 @@ const DevicesPanel = ({
             return (
               <div
                 key={device.id}
-                className="surface-subtle flex items-center justify-between gap-4 rounded-[24px] border px-4 py-4"
+                className="surface-subtle rounded-[24px] border px-4 py-4"
               >
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   {isEditing ? (
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
                       <input
                         value={deviceNameInput}
                         onChange={(event) => setDeviceNameInput(event.target.value)}
                         placeholder="輸入裝置名稱"
                         className="h-10 w-full min-w-0 rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none"
                       />
-                      <Button
-                        className="h-10 rounded-2xl px-3"
-                        disabled={
-                          renamingDeviceId === device.id || deviceNameInput.trim().length === 0
-                        }
-                        onClick={() => {
-                          onRenameDevice(device.id, deviceNameInput);
-                          setEditingDeviceId(null);
-                          setDeviceNameInput("");
-                        }}
-                      >
-                        儲存
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-10 rounded-2xl px-3"
-                        onClick={() => {
-                          setEditingDeviceId(null);
-                          setDeviceNameInput("");
-                        }}
-                      >
-                        取消
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          className="h-10 rounded-2xl px-3"
+                          disabled={
+                            renamingDeviceId === device.id || deviceNameInput.trim().length === 0
+                          }
+                          onClick={() => {
+                            onRenameDevice(device.id, deviceNameInput);
+                            setEditingDeviceId(null);
+                            setDeviceNameInput("");
+                          }}
+                        >
+                          儲存
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-10 rounded-2xl px-3"
+                          onClick={() => {
+                            setEditingDeviceId(null);
+                            setDeviceNameInput("");
+                          }}
+                        >
+                          取消
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <>
                       <p className="text-base font-semibold text-[var(--text-primary)]">
                         {device.displayName}
                       </p>
-                      <p className="mt-1 truncate text-sm text-[var(--text-secondary)]">
+                      <p className="mt-1 break-words text-sm text-[var(--text-secondary)]">
                         {detail} · {device.connected ? "已連線" : "離線"}
                         {device.lastSeenAt
                           ? ` · ${new Date(device.lastSeenAt).toLocaleString()}`
@@ -1309,7 +1311,7 @@ const DevicesPanel = ({
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   {device.id === currentDeviceId ? (
                     <span className="rounded-full border border-[color:var(--dynamic-ring)] bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
                       本機
