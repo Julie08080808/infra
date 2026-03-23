@@ -90,9 +90,13 @@ export const MiniPlayer = () => {
       >
         <div className="h-1 bg-[var(--surface-border)]">
           {isLoadingTrack ? (
-            <div className="h-full w-full animate-pulse bg-[var(--accent)]/60" />
+            <div
+              key="loading-bar"
+              className="h-full w-full animate-pulse bg-[var(--accent)]/60"
+            />
           ) : (
             <div
+              key="progress-bar"
               className="h-full bg-[var(--accent)] transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
