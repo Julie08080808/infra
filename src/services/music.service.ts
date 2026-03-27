@@ -529,16 +529,12 @@ function getHeaderThumbnailUrl(header: unknown): string | undefined {
     thumbnails?: Array<{ url?: string }>;
   };
 
-  const responsiveThumbnail = withThumbnail.thumbnail?.contents
-    ?.find((item) => item?.url?.trim())
-    ?.url?.trim();
+  const responsiveThumbnail = getThumbnailFromList(withThumbnail.thumbnail);
   if (responsiveThumbnail) {
     return responsiveThumbnail;
   }
 
-  const detailThumbnail = withThumbnail.thumbnails
-    ?.find((item) => item?.url?.trim())
-    ?.url?.trim();
+  const detailThumbnail = getThumbnailFromList(withThumbnail.thumbnails);
   return detailThumbnail || undefined;
 }
 
@@ -551,10 +547,36 @@ function getThumbnailFromList(
   }
 
   if (Array.isArray(thumbnails)) {
-    const thumbnailUrl = [...thumbnails]
-      .reverse()
-      .find((item) => item?.url?.trim())
-      ?.url?.trim();
+    const validThumbnails = thumbnails.filter((item) => item?.url?.trim());
+
+    if (validThumbnails.length === 0) {
+      return fallbackUrl;
+    }
+
+    const sizedThumbnails = validThumbnails.filter(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "width" in item &&
+        "height" in item &&
+        Number.isFinite((item as { width?: number | null }).width) &&
+        Number.isFinite((item as { height?: number | null }).height),
+    );
+
+    const thumbnailUrl =
+      sizedThumbnails.length > 0
+        ? [...sizedThumbnails]
+            .sort((left, right) => {
+              const leftArea =
+                Number((left as { width?: number | null }).width) *
+                Number((left as { height?: number | null }).height);
+              const rightArea =
+                Number((right as { width?: number | null }).width) *
+                Number((right as { height?: number | null }).height);
+              return rightArea - leftArea;
+            })[0]
+            ?.url?.trim()
+        : [...validThumbnails].reverse()[0]?.url?.trim();
 
     return thumbnailUrl || fallbackUrl;
   }
@@ -571,6 +593,12 @@ function createArtistTrackItem(track: Track): DiscoverTrackItem {
     artistId: track.artistId,
     thumbnail: track.thumbnail,
     duration: track.duration,
+    presentation:
+      track.album?.id || track.album?.name
+        ? "song"
+        : track.thumbnail && /(?:i\.ytimg\.com|img\.youtube\.com|ytimg\.com\/vi\/)/iu.test(track.thumbnail)
+          ? "video"
+          : "song",
     track,
   };
 }

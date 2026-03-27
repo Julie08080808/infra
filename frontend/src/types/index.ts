@@ -116,6 +116,8 @@ export interface DiscoverMood {
   label: string;
 }
 
+export type DiscoverTrackPresentation = "song" | "video";
+
 export interface DiscoverTrackItem {
   kind: "track";
   id: string;
@@ -124,6 +126,7 @@ export interface DiscoverTrackItem {
   artistId?: string;
   thumbnail?: string;
   duration: number;
+  presentation: DiscoverTrackPresentation;
   track: Track;
 }
 

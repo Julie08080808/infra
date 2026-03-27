@@ -130,6 +130,7 @@ describe("/api/discover", () => {
               artist: baseTrack.artist,
               thumbnail: baseTrack.thumbnail,
               duration: baseTrack.duration,
+              presentation: "song",
               track: baseTrack,
             },
           ],

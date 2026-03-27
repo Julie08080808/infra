@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { OpenAlbumButton } from "@/components/album/OpenAlbumButton";
 import { OpenArtistButton } from "@/components/artist/OpenArtistButton";
+import { MusicVideoHeroRail } from "@/components/discover/MusicVideoHeroRail";
 import { OpenPlaylistButton } from "@/components/playlist/OpenPlaylistButton";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,19 @@ import type {
 interface DiscoverViewProps {
   isMobile?: boolean;
 }
+
+const MUSIC_VIDEO_SECTION_PATTERNS = [
+  /latest\s+music\s+videos?/iu,
+  /music\s+videos?/iu,
+  /video\s+highlights?/iu,
+  /音樂影片/iu,
+  /音樂錄影帶/iu,
+  /音樂視頻/iu,
+  /ミュージック.?ビデオ/iu,
+  /뮤직.?비디오/iu,
+  /vídeos?\s+musicais?/iu,
+  /videoclipes?/iu,
+];
 
 function formatFetchedAt(value: string | null): string {
   if (!value) {
@@ -81,6 +95,32 @@ function normalizeCompareText(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function isDiscoverTrackItem(item: DiscoverItem): item is DiscoverTrackItem {
+  return item.kind === "track";
+}
+
+function isMusicVideoSection(section: {
+  title: string;
+  subtitle?: string;
+  items: DiscoverItem[];
+}): boolean {
+  const trackItems = section.items.filter(isDiscoverTrackItem);
+
+  if (trackItems.length === 0 || trackItems.length !== section.items.length) {
+    return false;
+  }
+
+  const explicitVideoCount = trackItems.filter(
+    (item) => item.presentation === "video",
+  ).length;
+  const sectionLabel = `${section.title} ${section.subtitle || ""}`;
+
+  return (
+    explicitVideoCount >= Math.max(1, Math.ceil(trackItems.length / 2)) ||
+    MUSIC_VIDEO_SECTION_PATTERNS.some((pattern) => pattern.test(sectionLabel))
+  );
 }
 
 function getCollectionSupportText(item: DiscoverCollectionItem): string {
@@ -223,6 +263,23 @@ function DiscoverSectionRail({
     return null;
   }
 
+  if (isMusicVideoSection(section)) {
+    return (
+      <MusicVideoHeroRail
+        title={section.title}
+        subtitle={section.subtitle}
+        items={section.items.filter(isDiscoverTrackItem)}
+        onQueueTrack={onQueueTrack}
+        onCreateMix={onCreateMix}
+        onToggleFavorite={onToggleFavorite}
+        pendingTrackId={pendingTrackId}
+        creatingMixId={creatingMixId}
+        favoriteTrackIds={favoriteTrackIds}
+        favoriteDisabled={!libraryReady}
+      />
+    );
+  }
+
   return (
     <section className="space-y-4">
       <SectionHeading
@@ -344,7 +401,7 @@ function TrackDiscoverCard({
           </div>
           <div className="flex min-h-7 flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
             <span className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2.5 py-1">
-              單曲
+              {item.presentation === "video" ? "影片" : "單曲"}
             </span>
             <span>{formatTime(item.duration || item.track.duration || 0)}</span>
             {destinationLabel ? (
@@ -617,6 +674,7 @@ function TopRequestedRail({
               artist: entry.track.artist,
               thumbnail: entry.track.thumbnail,
               duration: entry.track.duration,
+              presentation: "song",
               track: entry.track,
             }}
             onQueueTrack={onQueueTrack}

@@ -53,6 +53,7 @@ const artistDetails: ArtistDetails = {
           artist: "周杰倫",
           artistId: "artist-123",
           duration: 269,
+          presentation: "song",
           track: {
             videoId: "track-1",
             title: "晴天",

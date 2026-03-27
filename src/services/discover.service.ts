@@ -13,12 +13,14 @@ import type {
   DiscoverMood,
   DiscoverSection,
   DiscoverTrackItem,
+  DiscoverTrackPresentation,
   TopRequestedEntry,
   Track,
 } from "../types/index.ts";
 import { log } from "../utils/logger.ts";
 
 const DISCOVER_FEED_CACHE_TTL_MS = 15 * 60 * 1000;
+const DISCOVER_VIDEO_METADATA_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_TOP_REQUESTED_LIMIT = 10;
 const MOODS_AND_GENRES_BROWSE_ID = "FEmusic_moods_and_genres";
 
@@ -55,6 +57,16 @@ type MoodFeedInternal = {
   sections: DiscoverSection[];
   warnings: string[];
   fetchedAt: string;
+};
+
+type DiscoverVideoMetadata = {
+  duration?: number;
+  artist?: string;
+};
+
+type DiscoverVideoMetadataCacheEntry = {
+  value: DiscoverVideoMetadata;
+  expiresAt: number;
 };
 
 type TrackCatalogRow = {
@@ -218,11 +230,37 @@ function parseCountValue(value: string | number | undefined): number | undefined
 }
 
 function getThumbnailUrlFromArray(
-  thumbnails: Array<{ url?: string | null }> | undefined,
+  thumbnails:
+    | Array<{
+        url?: string | null;
+        width?: number | null;
+        height?: number | null;
+      }>
+    | undefined,
 ): string | undefined {
-  return [...(thumbnails || [])]
-    .reverse()
-    .find((thumbnail) => thumbnail?.url?.trim())
+  const candidates = (thumbnails || []).filter((thumbnail) =>
+    Boolean(thumbnail?.url?.trim()),
+  );
+
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  const sizedCandidates = candidates.filter(
+    (thumbnail) =>
+      Number.isFinite(thumbnail?.width) && Number.isFinite(thumbnail?.height),
+  );
+
+  if (sizedCandidates.length === 0) {
+    return [...candidates].reverse()[0]?.url?.trim();
+  }
+
+  return [...sizedCandidates]
+    .sort((left, right) => {
+      const leftArea = Number(left.width) * Number(left.height);
+      const rightArea = Number(right.width) * Number(right.height);
+      return rightArea - leftArea;
+    })[0]
     ?.url?.trim();
 }
 
@@ -338,7 +376,24 @@ function fallbackArtistFromSubtitle(subtitle: string | undefined): string {
   return candidate;
 }
 
-function createDiscoverTrackItem(track: Track): DiscoverTrackItem {
+function inferTrackPresentationFromThumbnail(
+  thumbnail: string | undefined,
+  hasAlbumLink: boolean,
+): DiscoverTrackPresentation {
+  if (hasAlbumLink) {
+    return "song";
+  }
+
+  return thumbnail &&
+    /(?:i\.ytimg\.com|img\.youtube\.com|ytimg\.com\/vi\/)/iu.test(thumbnail)
+    ? "video"
+    : "song";
+}
+
+function createDiscoverTrackItem(
+  track: Track,
+  presentation: DiscoverTrackPresentation = "song",
+): DiscoverTrackItem {
   return {
     kind: "track",
     id: track.videoId,
@@ -347,7 +402,70 @@ function createDiscoverTrackItem(track: Track): DiscoverTrackItem {
     artistId: track.artistId,
     thumbnail: track.thumbnail,
     duration: track.duration,
+    presentation,
     track,
+  };
+}
+
+function hasMeaningfulArtistName(value: string | undefined): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized !== "Unknown";
+}
+
+function getTrackDurationValue(item: DiscoverTrackItem): number {
+  return item.duration > 0 ? item.duration : item.track.duration;
+}
+
+function needsDiscoverVideoMetadata(item: DiscoverTrackItem): boolean {
+  if (item.presentation !== "video") {
+    return false;
+  }
+
+  return (
+    getTrackDurationValue(item) <= 0 ||
+    !hasMeaningfulArtistName(item.artist) ||
+    !hasMeaningfulArtistName(item.track.artist)
+  );
+}
+
+function applyDiscoverVideoMetadata(
+  item: DiscoverTrackItem,
+  metadata: DiscoverVideoMetadata,
+): DiscoverTrackItem {
+  const resolvedDuration =
+    item.duration > 0
+      ? item.duration
+      : item.track.duration > 0
+        ? item.track.duration
+        : metadata.duration || 0;
+  const resolvedArtist =
+    hasMeaningfulArtistName(item.artist) ? item.artist : metadata.artist || item.artist;
+  const resolvedTrackArtist = hasMeaningfulArtistName(item.track.artist)
+    ? item.track.artist
+    : metadata.artist || item.track.artist;
+
+  if (
+    resolvedDuration === item.duration &&
+    resolvedDuration === item.track.duration &&
+    resolvedArtist === item.artist &&
+    resolvedTrackArtist === item.track.artist
+  ) {
+    return item;
+  }
+
+  return {
+    ...item,
+    artist: resolvedArtist,
+    duration: resolvedDuration,
+    track: {
+      ...item.track,
+      artist: resolvedTrackArtist,
+      duration: resolvedDuration,
+    },
   };
 }
 
@@ -405,7 +523,10 @@ function normalizeParsedCarouselItem(item: any): DiscoverItem | null {
         : undefined,
     };
 
-    return createDiscoverTrackItem(track);
+    return createDiscoverTrackItem(
+      track,
+      itemType === "video" ? "video" : "song",
+    );
   }
 
   if (itemType === "album" || itemType === "playlist") {
@@ -503,7 +624,10 @@ function normalizeRawResponsiveListItem(raw: any): DiscoverItem | null {
           : undefined,
     };
 
-    return createDiscoverTrackItem(track);
+    return createDiscoverTrackItem(
+      track,
+      inferTrackPresentationFromThumbnail(thumbnail, Boolean(track.album)),
+    );
   }
 
   if (
@@ -555,7 +679,10 @@ function normalizeRawTwoRowItem(raw: any): DiscoverItem | null {
       duration: 0,
       thumbnail,
     };
-    return createDiscoverTrackItem(track);
+    return createDiscoverTrackItem(
+      track,
+      inferTrackPresentationFromThumbnail(thumbnail, false),
+    );
   }
 
   if (
@@ -934,6 +1061,14 @@ export class DiscoverService {
   >();
   private readonly moodFeedCache = new Map<string, MoodFeedCacheEntry>();
   private readonly moodFeedInFlight = new Map<string, Promise<MoodFeedInternal>>();
+  private readonly videoMetadataCache = new Map<
+    string,
+    DiscoverVideoMetadataCacheEntry
+  >();
+  private readonly videoMetadataInFlight = new Map<
+    string,
+    Promise<DiscoverVideoMetadata | null>
+  >();
 
   constructor(databasePath: string = getDefaultDiscoverStatsDbPath()) {
     this.statsStore = new DiscoverStatsStore(databasePath);
@@ -1054,6 +1189,138 @@ export class DiscoverService {
     return request;
   }
 
+  private async enrichDiscoverTrackMetadata(
+    market: DiscoverMarketCode,
+    sections: DiscoverSection[],
+  ): Promise<DiscoverSection[]> {
+    const pendingVideoIds = [...new Set(
+      sections
+        .flatMap((section) => section.items)
+        .filter(
+          (item): item is DiscoverTrackItem =>
+            item.kind === "track" && needsDiscoverVideoMetadata(item),
+        )
+        .map((item) => item.track.videoId)
+        .filter((videoId) => Boolean(videoId?.trim())),
+    )];
+
+    if (pendingVideoIds.length === 0) {
+      return sections;
+    }
+
+    const resolvedMetadata = new Map<string, DiscoverVideoMetadata>();
+    const concurrency = 6;
+
+    for (let index = 0; index < pendingVideoIds.length; index += concurrency) {
+      const chunk = pendingVideoIds.slice(index, index + concurrency);
+      const results = await Promise.all(
+        chunk.map(async (videoId) => ({
+          videoId,
+          metadata: await this.getDiscoverVideoMetadata(market, videoId),
+        })),
+      );
+
+      for (const result of results) {
+        if (result.metadata) {
+          resolvedMetadata.set(result.videoId, result.metadata);
+        }
+      }
+    }
+
+    if (resolvedMetadata.size === 0) {
+      return sections;
+    }
+
+    return sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) => {
+        if (item.kind !== "track") {
+          return item;
+        }
+
+        const metadata = resolvedMetadata.get(item.track.videoId);
+        if (!metadata) {
+          return item;
+        }
+
+        return applyDiscoverVideoMetadata(item, metadata);
+      }),
+    }));
+  }
+
+  private async getDiscoverVideoMetadata(
+    market: DiscoverMarketCode,
+    videoId: string,
+  ): Promise<DiscoverVideoMetadata | null> {
+    const normalizedVideoId = videoId.trim();
+    if (!normalizedVideoId) {
+      return null;
+    }
+
+    const cachedEntry = this.videoMetadataCache.get(normalizedVideoId);
+    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+      return cachedEntry.value;
+    }
+
+    if (cachedEntry) {
+      this.videoMetadataCache.delete(normalizedVideoId);
+    }
+
+    const inFlight = this.videoMetadataInFlight.get(normalizedVideoId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = (async () => {
+      try {
+        const client = await this.getMarketClient(market);
+        const info = await client.getBasicInfo(normalizedVideoId, {
+          client: "YTMUSIC",
+        });
+
+        const duration =
+          typeof info.basic_info?.duration === "number" &&
+          Number.isFinite(info.basic_info.duration) &&
+          info.basic_info.duration > 0
+            ? info.basic_info.duration
+            : undefined;
+        const artist =
+          typeof info.basic_info?.author === "string" &&
+          hasMeaningfulArtistName(info.basic_info.author)
+            ? info.basic_info.author.trim()
+            : undefined;
+
+        if (!duration && !artist) {
+          return null;
+        }
+
+        const metadata: DiscoverVideoMetadata = {
+          ...(duration ? { duration } : {}),
+          ...(artist ? { artist } : {}),
+        };
+
+        this.videoMetadataCache.set(normalizedVideoId, {
+          value: metadata,
+          expiresAt: Date.now() + DISCOVER_VIDEO_METADATA_CACHE_TTL_MS,
+        });
+
+        return metadata;
+      } catch (error) {
+        log.warn("Failed to resolve discover video metadata", {
+          error: error instanceof Error ? error.message : String(error),
+          market,
+          videoId: normalizedVideoId,
+        });
+        return null;
+      } finally {
+        this.videoMetadataInFlight.delete(normalizedVideoId);
+      }
+    })();
+
+    this.videoMetadataInFlight.set(normalizedVideoId, request);
+    return request;
+  }
+
   private async getBaseFeed(market: DiscoverMarketCode): Promise<BaseFeedInternal> {
     const cachedEntry = this.baseFeedCache.get(market);
     if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
@@ -1118,6 +1385,8 @@ export class DiscoverService {
         });
       }
     }
+
+    sections = await this.enrichDiscoverTrackMetadata(market, sections);
 
     return {
       market,
@@ -1193,9 +1462,13 @@ export class DiscoverService {
         ...mood.endpoint,
         client: "YTMUSIC",
       });
+      const sections = await this.enrichDiscoverTrackMetadata(
+        market,
+        normalizeRawSections(response.data),
+      );
 
       return {
-        sections: normalizeRawSections(response.data),
+        sections,
         warnings: [],
         fetchedAt: new Date().toISOString(),
       };

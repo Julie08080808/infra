@@ -34,7 +34,31 @@ function createTrackItem(videoId: string, title: string): DiscoverTrackItem {
     artist: track.artist,
     thumbnail: track.thumbnail,
     duration: track.duration,
+    presentation: "song",
     track,
+  };
+}
+
+function createVideoTrackItem(
+  videoId: string,
+  title: string,
+  artist = "Unknown",
+): DiscoverTrackItem {
+  return {
+    kind: "track",
+    id: videoId,
+    title,
+    artist,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    duration: 0,
+    presentation: "video",
+    track: {
+      videoId,
+      title,
+      artist,
+      duration: 0,
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    },
   };
 }
 
@@ -214,5 +238,65 @@ describe("DiscoverService", () => {
     expect(response.sections).toEqual([moodSection]);
     expect(response.warnings).toEqual(["base warning", "mood warning"]);
     expect(response.fetchedAt).toBe("2026-03-27T00:05:00.000Z");
+  });
+
+  test("hydrates missing metadata for discover video items", async () => {
+    const section = createSection(
+      "video-section",
+      "最新音樂影片",
+      createVideoTrackItem("video-1", "Video One"),
+    );
+    let requestedVideoId: string | undefined;
+
+    (
+      service as unknown as {
+        getMarketClient: () => Promise<{
+          getBasicInfo: (
+            videoId: string,
+            options: { client: string },
+          ) => Promise<{
+            basic_info: { duration: number; author: string };
+          }>;
+        }>;
+      }
+    ).getMarketClient = async () => ({
+      getBasicInfo: async (videoId, options) => {
+        requestedVideoId = videoId;
+        expect(options).toEqual({ client: "YTMUSIC" });
+        return {
+          basic_info: {
+            duration: 277,
+            author: "八三夭",
+          },
+        };
+      },
+    });
+
+    const sections = await (
+      service as unknown as {
+        enrichDiscoverTrackMetadata: (
+          market: DiscoverMarketCode,
+          sections: DiscoverSection[],
+        ) => Promise<DiscoverSection[]>;
+      }
+    ).enrichDiscoverTrackMetadata("TW", [section]);
+
+    expect(requestedVideoId).toBe("video-1");
+    expect(sections[0]?.items[0]).toEqual({
+      kind: "track",
+      id: "video-1",
+      title: "Video One",
+      artist: "八三夭",
+      thumbnail: "https://img.youtube.com/vi/video-1/mqdefault.jpg",
+      duration: 277,
+      presentation: "video",
+      track: {
+        videoId: "video-1",
+        title: "Video One",
+        artist: "八三夭",
+        duration: 277,
+        thumbnail: "https://img.youtube.com/vi/video-1/mqdefault.jpg",
+      },
+    });
   });
 });
