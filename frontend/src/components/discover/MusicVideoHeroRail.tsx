@@ -105,9 +105,10 @@ function MediaArtwork({
       <img
         src={optimizedSrc}
         alt={item.title}
-        className={cn("h-full w-full object-cover", className)}
+        className={cn("discover-artwork-media h-full w-full object-cover", className)}
         decoding="async"
         loading="lazy"
+        draggable={false}
         onError={() => {
           if (candidateSources.length > 0 && !failedCandidates.includes(optimizedSrc)) {
             setFailedCandidates((previous) => [...previous, optimizedSrc]);
@@ -165,7 +166,7 @@ function FeaturedVideoCard({
           destination.onOpen ? "cursor-pointer" : "cursor-default",
         )}
       >
-        <div className="relative h-full min-h-[240px] overflow-hidden bg-[var(--surface-subtle)] aspect-[16/9] sm:min-h-[280px] lg:min-h-[320px] xl:aspect-auto">
+        <div className="discover-rail-card-media relative h-full min-h-[240px] overflow-hidden bg-[var(--surface-subtle)] aspect-[16/9] sm:min-h-[280px] lg:min-h-[320px] xl:aspect-auto">
           <MediaArtwork
             item={item}
             preferredQuality={ThumbnailQuality.MAXRES}
@@ -324,7 +325,7 @@ function SupportingVideoCard({
           destination.onOpen ? "cursor-pointer" : "cursor-default",
         )}
       >
-        <div className="relative h-full min-h-[176px] overflow-hidden aspect-[16/9] xl:aspect-auto">
+        <div className="discover-rail-card-media relative h-full min-h-[176px] overflow-hidden aspect-[16/9] xl:aspect-auto">
           <MediaArtwork
             item={item}
             className={cn(
@@ -348,7 +349,7 @@ function SupportingVideoCard({
         </div>
       </button>
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 border-t border-[color:var(--surface-border)]/75 bg-[linear-gradient(180deg,_rgba(255,255,255,0.92),_rgba(255,255,255,0.8))] p-4 dark:bg-[linear-gradient(180deg,_rgba(14,18,28,0.92),_rgba(14,18,28,0.84))]">
         <div className="flex flex-wrap items-center gap-2">
           {item.track.album ? (
             <OpenAlbumButton
@@ -430,7 +431,7 @@ function CompactVideoCard({
   const duration = getDisplayDuration(item);
 
   return (
-    <Card className="w-[216px] shrink-0 overflow-hidden rounded-[24px] border p-0 sm:w-[224px]">
+    <Card className="w-[216px] shrink-0 overflow-hidden rounded-[26px] border p-0 sm:w-[224px]">
       <button
         type="button"
         onClick={() => destination.onOpen?.()}
@@ -440,7 +441,7 @@ function CompactVideoCard({
           destination.onOpen ? "cursor-pointer" : "cursor-default",
         )}
       >
-        <div className="relative aspect-[16/9] overflow-hidden">
+        <div className="discover-rail-card-media relative aspect-[16/9] overflow-hidden">
           <MediaArtwork
             item={item}
             className={cn(
@@ -457,7 +458,7 @@ function CompactVideoCard({
         </div>
       </button>
 
-      <div className="flex items-center justify-between gap-3 p-3">
+      <div className="flex items-center justify-between gap-3 border-t border-[color:var(--surface-border)]/70 bg-[linear-gradient(180deg,_rgba(255,255,255,0.92),_rgba(255,255,255,0.8))] p-4 dark:bg-[linear-gradient(180deg,_rgba(14,18,28,0.92),_rgba(14,18,28,0.84))]">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-[var(--text-primary)]">
             {item.artist}
@@ -559,16 +560,18 @@ export const MusicVideoHeroRail = ({
       </div>
 
       {overflowItems.length > 0 ? (
-        <div className="-mx-1 overflow-x-auto pb-2">
-          <div className="flex min-w-full gap-4 px-1">
-            {overflowItems.map((item) => (
-              <CompactVideoCard
-                key={item.track.videoId}
-                item={item}
-                onQueueTrack={onQueueTrack}
-                isPending={pendingTrackId === item.track.videoId}
-              />
-            ))}
+        <div className="-mx-3 overflow-visible px-3 pt-4 pb-10">
+          <div className="overflow-x-auto overflow-y-hidden pt-1 pb-6">
+            <div className="flex min-w-full gap-4 px-px">
+              {overflowItems.map((item) => (
+                <CompactVideoCard
+                  key={item.track.videoId}
+                  item={item}
+                  onQueueTrack={onQueueTrack}
+                  isPending={pendingTrackId === item.track.videoId}
+                />
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

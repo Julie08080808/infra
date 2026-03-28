@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
   Compass,
+  Disc3,
   Globe2,
   Heart,
   Layers3,
@@ -16,8 +25,6 @@ import {
 import { OpenAlbumButton } from "@/components/album/OpenAlbumButton";
 import { OpenArtistButton } from "@/components/artist/OpenArtistButton";
 import { MusicVideoHeroRail } from "@/components/discover/MusicVideoHeroRail";
-import { OpenPlaylistButton } from "@/components/playlist/OpenPlaylistButton";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -28,10 +35,9 @@ import { cn } from "@/lib/utils";
 import { api } from "@/services/api";
 import { useAlbumDialogStore } from "@/stores/albumDialogStore";
 import { useArtistDialogStore } from "@/stores/artistDialogStore";
+import { useDiscoverStore } from "@/stores/discoverStore";
 import { getCurrentRequester, useLibraryStore } from "@/stores/libraryStore";
 import { usePlaylistDialogStore } from "@/stores/playlistDialogStore";
-import { useDiscoverStore } from "@/stores/discoverStore";
-import { formatTime } from "@/utils/format";
 import type {
   DiscoverCollectionItem,
   DiscoverItem,
@@ -39,9 +45,37 @@ import type {
   TopRequestedEntry,
   Track,
 } from "@/types";
+import { formatTime } from "@/utils/format";
+import {
+  ThumbnailQuality,
+  type ThumbnailQuality as ThumbnailQualityType,
+  getOptimizedThumbnailCandidates,
+} from "@/utils/thumbnail";
 
 interface DiscoverViewProps {
   isMobile?: boolean;
+}
+
+interface DiscoverTrackRankingMeta {
+  rank: number;
+  requestCount: number;
+  lastRequestedAt: string;
+}
+
+interface DiscoverCollectionPreview {
+  tracks: Track[];
+  trackCount?: number;
+}
+
+interface DiscoverCollectionPreviewState {
+  status: "idle" | "loading" | "ready" | "error";
+  preview: DiscoverCollectionPreview | null;
+  error: string | null;
+}
+
+interface DiscoverCardDestination {
+  label: string | null;
+  onOpen: (() => void) | null;
 }
 
 const MUSIC_VIDEO_SECTION_PATTERNS = [
@@ -56,6 +90,23 @@ const MUSIC_VIDEO_SECTION_PATTERNS = [
   /vídeos?\s+musicais?/iu,
   /videoclipes?/iu,
 ];
+
+const DISCOVER_CHIP_BUTTON_CLASS =
+  "rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]";
+const DISCOVER_CHIP_LABEL_CLASS = "text-[11px]";
+const DISCOVER_PANEL_CLASS =
+  "rounded-[22px] border border-[color:var(--surface-border)] bg-[color:color-mix(in_srgb,var(--surface-subtle)_84%,var(--accent-soft)_16%)] p-3";
+const DISCOVER_PREVIEW_LIMIT = 3;
+const DISCOVER_RAIL_FOCUS_MIN = 48;
+const DISCOVER_RAIL_FOCUS_MAX = 96;
+const DISCOVER_RAIL_FOCUS_RATIO = 0.12;
+const DISCOVER_RAIL_FEATURED_THRESHOLD = 0.58;
+
+const collectionPreviewCache = new Map<string, DiscoverCollectionPreview>();
+const collectionPreviewInFlight = new Map<
+  string,
+  Promise<DiscoverCollectionPreview | null>
+>();
 
 function formatFetchedAt(value: string | null): string {
   if (!value) {
@@ -145,6 +196,163 @@ function getCollectionSupportText(item: DiscoverCollectionItem): string {
     : "打開播放清單後可單獨挑選歌曲加入佇列。";
 }
 
+function getTrackDuration(item: DiscoverTrackItem): number {
+  return item.duration > 0 ? item.duration : item.track.duration;
+}
+
+function resolveCollectionPreviewKey(item: DiscoverCollectionItem): string {
+  return `${item.kind}:${item.id}`;
+}
+
+function resolveCollectionTrackCount(
+  item: DiscoverCollectionItem,
+  responseCount: number,
+): number | undefined {
+  const responseTrackCount = responseCount > 0 ? responseCount : undefined;
+
+  if (
+    typeof item.trackCount === "number" &&
+    item.trackCount > 0 &&
+    responseTrackCount
+  ) {
+    return Math.max(item.trackCount, responseTrackCount);
+  }
+
+  if (typeof item.trackCount === "number" && item.trackCount > 0) {
+    return item.trackCount;
+  }
+
+  return responseTrackCount;
+}
+
+async function loadCollectionPreview(
+  item: DiscoverCollectionItem,
+): Promise<DiscoverCollectionPreview | null> {
+  const cacheKey = resolveCollectionPreviewKey(item);
+  const cachedPreview = collectionPreviewCache.get(cacheKey);
+
+  if (cachedPreview) {
+    return cachedPreview;
+  }
+
+  const pendingPreview = collectionPreviewInFlight.get(cacheKey);
+  if (pendingPreview) {
+    return pendingPreview;
+  }
+
+  const previewPromise = (async () => {
+    const response =
+      item.kind === "album"
+        ? await api.getAlbum(item.id)
+        : await api.getPlaylist(item.id);
+
+    if (!response.success || !response.data) {
+      return null;
+    }
+
+    const preview: DiscoverCollectionPreview = {
+      tracks: response.data.tracks.slice(0, DISCOVER_PREVIEW_LIMIT),
+      trackCount: resolveCollectionTrackCount(
+        item,
+        response.data.tracks.length,
+      ),
+    };
+
+    collectionPreviewCache.set(cacheKey, preview);
+    return preview;
+  })().finally(() => {
+    collectionPreviewInFlight.delete(cacheKey);
+  });
+
+  collectionPreviewInFlight.set(cacheKey, previewPromise);
+
+  return previewPromise;
+}
+
+function useDiscoverCollectionPreview(item: DiscoverCollectionItem) {
+  const cacheKey = useMemo(
+    () => resolveCollectionPreviewKey(item),
+    [item.id, item.kind],
+  );
+  const [state, setState] = useState<DiscoverCollectionPreviewState>(() => {
+    const cachedPreview = collectionPreviewCache.get(cacheKey);
+
+    return cachedPreview
+      ? {
+          status: "ready",
+          preview: cachedPreview,
+          error: null,
+        }
+      : {
+          status: "idle",
+          preview: null,
+          error: null,
+        };
+  });
+
+  useEffect(() => {
+    const cachedPreview = collectionPreviewCache.get(cacheKey);
+
+    if (cachedPreview) {
+      setState({
+        status: "ready",
+        preview: cachedPreview,
+        error: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    setState((currentState) =>
+      currentState.status === "loading"
+        ? currentState
+        : {
+            status: "loading",
+            preview: currentState.preview,
+            error: null,
+          },
+    );
+
+    void loadCollectionPreview(item)
+      .then((preview) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (preview) {
+          setState({
+            status: "ready",
+            preview,
+            error: null,
+          });
+          return;
+        }
+
+        setState({
+          status: "error",
+          preview: null,
+          error: "collection-preview-load-failed",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            preview: null,
+            error: "collection-preview-load-failed",
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheKey, item.id, item.kind]);
+
+  return state;
+}
+
 function SectionHeading({
   icon,
   title,
@@ -174,14 +382,126 @@ function SectionHeading({
   );
 }
 
-function DiscoverCardDetailSlot({
+function InfoPill({
   children,
+  tone = "default",
   className,
 }: {
-  children?: ReactNode;
+  children: ReactNode;
+  tone?: "default" | "accent" | "inverse";
   className?: string;
 }) {
-  return <div className={cn("min-h-[6.25rem]", className)}>{children}</div>;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-[11px] font-semibold",
+        tone === "default" &&
+          "border-[color:var(--surface-border)] bg-[var(--surface-subtle)] text-[var(--text-secondary)]",
+        tone === "accent" &&
+          "border-[color:var(--dynamic-ring)] bg-[var(--accent-soft)] text-[var(--accent)]",
+        tone === "inverse" &&
+          "border-white/14 bg-black/25 text-white/90 backdrop-blur-sm",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function DiscoverHorizontalRail({
+  children,
+  className,
+  viewportClassName,
+  contentClassName,
+  viewportRef,
+}: {
+  children: ReactNode;
+  className?: string;
+  viewportClassName?: string;
+  contentClassName?: string;
+  viewportRef?: RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div className={cn("-mx-3 overflow-visible px-3 pt-5 pb-10", className)}>
+      <div
+        ref={viewportRef}
+        className={cn(
+          "snap-x snap-proximity overflow-x-auto overflow-y-hidden pt-2 pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+          viewportClassName,
+        )}
+      >
+        <div
+          className={cn(
+            "flex min-w-full items-stretch gap-4 px-3",
+            contentClassName,
+          )}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiscoverArtwork({
+  src,
+  alt,
+  preferredQuality = ThumbnailQuality.HIGH,
+  className,
+}: {
+  src?: string;
+  alt: string;
+  preferredQuality?: ThumbnailQualityType;
+  className?: string;
+}) {
+  const [failedCandidates, setFailedCandidates] = useState<string[]>([]);
+  const candidateSources = useMemo(
+    () => (src ? getOptimizedThumbnailCandidates(src, preferredQuality) : []),
+    [preferredQuality, src],
+  );
+  const optimizedSrc = useMemo(
+    () =>
+      candidateSources.find((candidate) => !failedCandidates.includes(candidate)),
+    [candidateSources, failedCandidates, src],
+  );
+
+  useEffect(() => {
+    setFailedCandidates([]);
+  }, [candidateSources, src]);
+
+  if (optimizedSrc) {
+    return (
+      <img
+        src={optimizedSrc}
+        alt={alt}
+        className={cn("discover-artwork-media h-full w-full object-cover", className)}
+        decoding="async"
+        loading="lazy"
+        draggable={false}
+        onError={() => {
+          if (
+            candidateSources.length > 0 &&
+            !failedCandidates.includes(optimizedSrc)
+          ) {
+            setFailedCandidates((previousCandidates) => [
+              ...previousCandidates,
+              optimizedSrc,
+            ]);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "h-full w-full bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.2),_transparent_38%),linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(31,63,146,0.82)_46%,_rgba(161,98,7,0.72)_100%)]",
+        className,
+      )}
+    />
+  );
 }
 
 function MarketChip({
@@ -228,6 +548,626 @@ function WarningList({ warnings }: { warnings: string[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function getTrackDestination(
+  item: DiscoverTrackItem,
+  openAlbum: (album: Track["album"]) => void,
+  openArtist: (artist: { id: string; name: string }) => void,
+): DiscoverCardDestination {
+  const album = item.track.album;
+  const artistId = item.artistId || item.track.artistId;
+
+  if (album?.id && album.name) {
+    return {
+      label: "展開專輯",
+      onOpen: () => openAlbum(album),
+    };
+  }
+
+  if (artistId?.trim() && item.artist.trim()) {
+    return {
+      label: "探索歌手",
+      onOpen: () =>
+        openArtist({
+          id: artistId,
+          name: item.artist,
+        }),
+    };
+  }
+
+  return {
+    label: null,
+    onOpen: null,
+  };
+}
+
+function useDiscoverRailFeaturedIndex(
+  enabled: boolean,
+  itemCount: number,
+  railKey: string,
+) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, itemCount);
+  }, [itemCount]);
+
+  const setItemEmphasis = (node: HTMLDivElement | null, emphasis: number) => {
+    if (!node) {
+      return;
+    }
+
+    const normalizedEmphasis = Math.max(0, Math.min(emphasis, 1));
+    const nextValue = normalizedEmphasis.toFixed(4);
+
+    if (node.style.getPropertyValue("--discover-rail-emphasis") !== nextValue) {
+      node.style.setProperty("--discover-rail-emphasis", nextValue);
+    }
+
+    const nextFeaturedValue =
+      normalizedEmphasis >= DISCOVER_RAIL_FEATURED_THRESHOLD ? "true" : "false";
+
+    if (node.dataset.featured !== nextFeaturedValue) {
+      node.dataset.featured = nextFeaturedValue;
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      itemRefs.current.slice(0, itemCount).forEach((node) => {
+        setItemEmphasis(node, 0);
+      });
+      return;
+    }
+
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    let frameId = 0;
+    const previousValues = Array.from({ length: itemCount }, () => -1);
+
+    const resolveEmphasisValues = () => {
+      const viewportRect = viewport.getBoundingClientRect();
+      const anchorX =
+        viewportRect.left +
+        Math.min(
+          DISCOVER_RAIL_FOCUS_MAX,
+          Math.max(
+            DISCOVER_RAIL_FOCUS_MIN,
+            viewport.clientWidth * DISCOVER_RAIL_FOCUS_RATIO,
+          ),
+        );
+      const influenceRange = Math.max(viewport.clientWidth * 0.82, 360);
+
+      return itemRefs.current.slice(0, itemCount).map((node) => {
+        if (!node) {
+          return 0;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const distance = Math.abs(rect.left - anchorX);
+        const normalized = Math.max(0, 1 - distance / influenceRange);
+
+        return Number(
+          (normalized * normalized * (3 - 2 * normalized)).toFixed(4),
+        );
+      });
+    };
+
+    const applyMeasure = () => {
+      const nextValues = resolveEmphasisValues();
+
+      nextValues.forEach((value, index) => {
+        if (Math.abs(previousValues[index] - value) < 0.01) {
+          return;
+        }
+
+        previousValues[index] = value;
+        setItemEmphasis(itemRefs.current[index], value);
+      });
+    };
+
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(applyMeasure);
+    };
+
+    applyMeasure();
+    viewport.addEventListener("scroll", scheduleMeasure, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      viewport.removeEventListener("scroll", scheduleMeasure);
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [enabled, itemCount, railKey]);
+
+  const setItemRef = (index: number) => (node: HTMLDivElement | null) => {
+    itemRefs.current[index] = node;
+  };
+
+  return {
+    viewportRef,
+    setItemRef,
+  };
+}
+
+function TrackSupportPanel({ item }: { item: DiscoverTrackItem }) {
+  const hasAlbum = Boolean(item.track.album?.id && item.track.album?.name);
+  const hasArtist = Boolean((item.artistId || item.track.artistId)?.trim());
+
+  return (
+    <div className={cn(DISCOVER_PANEL_CLASS, "min-h-[4.75rem]")}>
+      {hasAlbum || hasArtist ? (
+        <div className="flex flex-wrap gap-2">
+          {item.track.album ? (
+            <OpenAlbumButton
+              album={item.track.album}
+              trackTitle={item.track.title}
+              className={DISCOVER_CHIP_BUTTON_CLASS}
+              labelClassName={DISCOVER_CHIP_LABEL_CLASS}
+            />
+          ) : null}
+          <OpenArtistButton
+            artistId={item.artistId || item.track.artistId}
+            artistName={item.artist}
+            className={DISCOVER_CHIP_BUTTON_CLASS}
+            labelClassName={DISCOVER_CHIP_LABEL_CLASS}
+          />
+        </div>
+      ) : (
+        <p className="text-sm leading-6 text-[var(--text-secondary)]">
+          可直接加入佇列或建立 Mix，之後再從專輯與歌手頁深入探索更多作品。
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TopRequestedStatsStrip({
+  meta,
+}: {
+  meta: DiscoverTrackRankingMeta;
+}) {
+  return (
+    <div
+      className={cn(
+        DISCOVER_PANEL_CLASS,
+        "grid min-h-[4.75rem] grid-cols-2 gap-3",
+      )}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+          點播次數
+        </p>
+        <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
+          已點播 {meta.requestCount} 次
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+          最後更新
+        </p>
+        <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">
+          {formatLastRequestedAt(meta.lastRequestedAt)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CollectionPreviewSkeleton() {
+  return (
+    <div className={cn(DISCOVER_PANEL_CLASS, "min-h-[13rem]")}>
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
+        載入曲目預覽
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: DISCOVER_PREVIEW_LIMIT }, (_, index) => (
+          <div
+            key={index}
+            className="animate-pulse rounded-[18px] border border-[color:var(--surface-border)] bg-[var(--surface-elevated)]/70 px-3 py-3"
+          >
+            <div className="h-3.5 w-2/3 rounded-full bg-[var(--surface-border)]" />
+            <div className="mt-2 h-3 w-1/3 rounded-full bg-[var(--surface-border)]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CollectionPreviewRow({
+  track,
+  index,
+}: {
+  track: Track;
+  index: number;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-[18px] border border-[color:var(--surface-border)] bg-[var(--surface-elevated)]/70 px-3 py-2.5">
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] text-[11px] font-semibold text-[var(--text-muted)]">
+        {index + 1}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+          {track.title}
+        </p>
+        <p className="truncate text-xs text-[var(--text-secondary)]">
+          {track.artist}
+        </p>
+      </div>
+      <span className="shrink-0 text-xs font-medium text-[var(--text-muted)]">
+        {formatTime(track.duration)}
+      </span>
+    </div>
+  );
+}
+
+function CollectionPreviewPanel({
+  item,
+  state,
+}: {
+  item: DiscoverCollectionItem;
+  state: DiscoverCollectionPreviewState;
+}) {
+  const previewTracks = state.preview?.tracks ?? [];
+  const totalCount = state.preview?.trackCount ?? item.trackCount;
+
+  if (state.status === "loading" && previewTracks.length === 0) {
+    return <CollectionPreviewSkeleton />;
+  }
+
+  if (previewTracks.length > 0) {
+    return (
+      <div className={cn(DISCOVER_PANEL_CLASS, "min-h-[13rem]")}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+            曲目預覽
+          </p>
+          {typeof totalCount === "number" && totalCount > previewTracks.length ? (
+            <span className="text-xs text-[var(--text-muted)]">
+              還有 {totalCount - previewTracks.length} 首
+            </span>
+          ) : null}
+        </div>
+        <div className="space-y-2">
+          {previewTracks.map((track, index) => (
+            <CollectionPreviewRow
+              key={`${track.videoId}-${index}`}
+              track={track}
+              index={index}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn(DISCOVER_PANEL_CLASS, "min-h-[13rem]")}>
+      <p className="text-sm leading-6 text-[var(--text-secondary)]">
+        {state.error ? "目前暫時無法預先載入曲目，" : ""}
+        {getCollectionSupportText(item)}
+      </p>
+    </div>
+  );
+}
+
+function TrackDiscoverCard({
+  item,
+  onQueueTrack,
+  onCreateMix,
+  onToggleFavorite,
+  isPending,
+  isCreatingMix,
+  isFavorite,
+  favoriteDisabled,
+  rankingMeta,
+}: {
+  item: DiscoverTrackItem;
+  onQueueTrack: (track: Track) => Promise<void>;
+  onCreateMix: (track: Track) => Promise<void>;
+  onToggleFavorite: (track: Track) => Promise<void>;
+  isPending: boolean;
+  isCreatingMix: boolean;
+  isFavorite: boolean;
+  favoriteDisabled: boolean;
+  rankingMeta?: DiscoverTrackRankingMeta;
+}) {
+  const openAlbum = useAlbumDialogStore((state) => state.openAlbum);
+  const openArtist = useArtistDialogStore((state) => state.openArtist);
+  const destination = getTrackDestination(item, openAlbum, openArtist);
+  const duration = getTrackDuration(item);
+
+  return (
+    <Card
+      className={cn(
+        "discover-rail-card flex w-[min(88vw,23rem)] shrink-0 flex-col overflow-hidden rounded-[30px] border p-0",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => destination.onOpen?.()}
+        disabled={!destination.onOpen}
+        className={cn(
+          "group block text-left",
+          destination.onOpen ? "cursor-pointer" : "cursor-default",
+        )}
+      >
+        <div
+          className={cn(
+            "discover-rail-card-media relative h-[16.75rem] overflow-hidden sm:h-[17.25rem]",
+          )}
+        >
+          <DiscoverArtwork
+            src={item.thumbnail || item.track.thumbnail}
+            alt={item.title}
+            preferredQuality={ThumbnailQuality.MAXRES}
+            className={cn(
+              "transition-transform duration-500",
+              destination.onOpen && "group-hover:scale-[1.04]",
+            )}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,_rgba(9,14,24,0.08)_0%,_rgba(9,14,24,0.18)_34%,_rgba(9,14,24,0.84)_100%)]" />
+
+          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4">
+            <div className="flex flex-wrap items-start gap-2">
+              {rankingMeta ? (
+                <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-[18px] border border-white/16 bg-white/12 px-3 text-sm font-semibold text-white shadow-[0_18px_36px_-24px_rgba(0,0,0,0.6)] backdrop-blur-sm">
+                  #{rankingMeta.rank}
+                </span>
+              ) : null}
+              <InfoPill tone="inverse">
+                {item.presentation === "video" ? "影片" : "單曲"}
+              </InfoPill>
+            </div>
+            <InfoPill tone="inverse">{formatTime(duration)}</InfoPill>
+          </div>
+
+          <div className="absolute inset-x-0 bottom-0 p-4">
+            {destination.label ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/92 backdrop-blur-sm">
+                {destination.label}
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </button>
+
+      <div className="flex min-h-0 flex-1 flex-col p-4 lg:p-5">
+        <div className="min-h-[5.75rem] space-y-1.5">
+          <h3
+            className="line-clamp-2 text-[1.2rem] font-semibold leading-8 tracking-tight text-[var(--text-primary)]"
+          >
+            {item.title}
+          </h3>
+          <p className="line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">
+            {item.artist}
+          </p>
+        </div>
+
+        <div className="mt-4">
+          {rankingMeta ? (
+            <TopRequestedStatsStrip meta={rankingMeta} />
+          ) : (
+            <TrackSupportPanel item={item} />
+          )}
+        </div>
+
+        <div className="mt-auto border-t border-[color:var(--surface-border)]/75 pt-4">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              onClick={() => {
+                void onQueueTrack(item.track);
+              }}
+              disabled={isPending || isCreatingMix}
+              className="h-11 rounded-[18px]"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  加入中
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="h-4 w-4" />
+                  加入佇列
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void onCreateMix(item.track);
+              }}
+              disabled={isPending || isCreatingMix}
+              className="h-11 rounded-[18px]"
+            >
+              {isCreatingMix ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  建立中
+                </>
+              ) : (
+                <>
+                  <Radio className="h-4 w-4" />
+                  建立 Mix
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant={isFavorite ? "default" : "outline"}
+              onClick={() => {
+                void onToggleFavorite(item.track);
+              }}
+              disabled={favoriteDisabled}
+              className="col-span-2 h-11 rounded-[18px]"
+            >
+              <Heart className={cn("h-4 w-4", isFavorite && "fill-current")} />
+              {isFavorite ? "已收藏" : "加入收藏"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CollectionDiscoverCard({
+  item,
+  onQueueCollection,
+  isPending,
+}: {
+  item: DiscoverCollectionItem;
+  onQueueCollection: (item: DiscoverCollectionItem) => Promise<void>;
+  isPending: boolean;
+}) {
+  const openAlbum = useAlbumDialogStore((state) => state.openAlbum);
+  const openPlaylist = usePlaylistDialogStore((state) => state.openPlaylist);
+  const previewState = useDiscoverCollectionPreview(item);
+  const destinationLabel =
+    item.kind === "album" ? "展開專輯" : "展開播放清單";
+  const displayTrackCount = previewState.preview?.trackCount ?? item.trackCount;
+
+  const openCollection = () => {
+    if (item.kind === "album") {
+      openAlbum({
+        id: item.id,
+        name: item.title,
+      });
+      return;
+    }
+
+    openPlaylist({
+      id: item.id,
+      name: item.title,
+    });
+  };
+
+  return (
+    <Card
+      className={cn(
+        "discover-rail-card flex w-[min(90vw,24rem)] shrink-0 flex-col overflow-hidden rounded-[30px] border p-0",
+      )}
+    >
+      <button
+        type="button"
+        onClick={openCollection}
+        className="group block text-left"
+      >
+        <div
+          className={cn(
+            "discover-rail-card-media relative h-[17.5rem] overflow-hidden sm:h-[18rem]",
+          )}
+        >
+          <DiscoverArtwork
+            src={item.thumbnail}
+            alt={item.title}
+            preferredQuality={ThumbnailQuality.MAXRES}
+            className="transition-transform duration-500 group-hover:scale-[1.04]"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,_rgba(9,14,24,0.08)_0%,_rgba(9,14,24,0.18)_38%,_rgba(9,14,24,0.84)_100%)]" />
+
+          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4">
+            <div className="flex flex-wrap gap-2">
+              <InfoPill tone="inverse">
+                {item.kind === "album" ? "專輯" : "播放清單"}
+              </InfoPill>
+              {displayTrackCount ? (
+                <InfoPill tone="inverse">{displayTrackCount} 首</InfoPill>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="absolute inset-x-0 bottom-0 p-4">
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/92 backdrop-blur-sm">
+              {destinationLabel}
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </span>
+          </div>
+        </div>
+      </button>
+
+      <div className="flex min-h-0 flex-1 flex-col p-4 lg:p-5">
+        <div className="min-h-[5.75rem] space-y-1.5">
+          <h3
+            className="line-clamp-2 text-[1.2rem] font-semibold leading-8 tracking-tight text-[var(--text-primary)]"
+          >
+            {item.title}
+          </h3>
+          <p className="line-clamp-2 text-sm leading-6 text-[var(--text-secondary)]">
+            {item.artist}
+          </p>
+        </div>
+
+        <div className="mt-4 flex min-h-[2.75rem] flex-wrap content-start items-center gap-2">
+          <InfoPill tone="accent" className="gap-1.5">
+            {item.kind === "album" ? (
+              <Disc3 className="h-3.5 w-3.5" />
+            ) : (
+              <ListMusic className="h-3.5 w-3.5" />
+            )}
+            {item.kind === "album" ? "新作品" : "主題精選"}
+          </InfoPill>
+          <OpenArtistButton
+            artistId={item.artistId}
+            artistName={item.artist}
+            className={DISCOVER_CHIP_BUTTON_CLASS}
+            labelClassName={DISCOVER_CHIP_LABEL_CLASS}
+          />
+        </div>
+
+        <div className="mt-4">
+          <CollectionPreviewPanel item={item} state={previewState} />
+        </div>
+
+        <div className="mt-auto border-t border-[color:var(--surface-border)]/75 pt-4">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              onClick={openCollection}
+              className="h-11 rounded-[18px] px-3 text-[13px]"
+            >
+              <ArrowUpRight className="h-4 w-4" />
+              {destinationLabel}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void onQueueCollection(item);
+              }}
+              disabled={isPending}
+              className="h-11 rounded-[18px] px-3 text-[13px]"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  加入中
+                </>
+              ) : (
+                <>
+                  <ListMusic className="h-4 w-4" />
+                  整組加入佇列
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -280,19 +1220,42 @@ function DiscoverSectionRail({
     );
   }
 
+  const hasCollectionItems = section.items.some((item) => item.kind !== "track");
+  const { viewportRef, setItemRef } = useDiscoverRailFeaturedIndex(
+    hasCollectionItems,
+    section.items.length,
+    section.id,
+  );
+
   return (
     <section className="space-y-4">
       <SectionHeading
-        icon={<Layers3 className="h-4 w-4" />}
+        icon={
+          hasCollectionItems ? (
+            <Layers3 className="h-4 w-4" />
+          ) : (
+            <Music2 className="h-4 w-4" />
+          )
+        }
         title={section.title}
         subtitle={section.subtitle}
       />
-      <div className="-mx-1 overflow-x-auto pb-2">
-        <div className="flex min-w-full items-stretch gap-4 px-1">
-          {section.items.map((item) =>
-            item.kind === "track" ? (
+      <DiscoverHorizontalRail viewportRef={hasCollectionItems ? viewportRef : undefined}>
+        {section.items.map((item, index) => (
+          <div
+            key={`${item.kind}:${item.id}`}
+            ref={hasCollectionItems ? setItemRef(index) : undefined}
+            className={cn(
+              "snap-start overflow-visible",
+              hasCollectionItems
+                ? item.kind === "track"
+                  ? "discover-rail-item discover-rail-item-track pt-1 pb-10"
+                  : "discover-rail-item discover-rail-item-collection pt-1 pb-10"
+                : "pt-1 pb-3",
+            )}
+          >
+            {item.kind === "track" ? (
               <TrackDiscoverCard
-                key={`${item.kind}:${item.id}`}
                 item={item}
                 onQueueTrack={onQueueTrack}
                 onCreateMix={onCreateMix}
@@ -304,330 +1267,15 @@ function DiscoverSectionRail({
               />
             ) : (
               <CollectionDiscoverCard
-                key={`${item.kind}:${item.id}`}
                 item={item}
                 onQueueCollection={onQueueCollection}
                 isPending={pendingCollectionId === `${item.kind}:${item.id}`}
               />
-            ),
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        ))}
+      </DiscoverHorizontalRail>
     </section>
-  );
-}
-
-function TrackDiscoverCard({
-  item,
-  onQueueTrack,
-  onCreateMix,
-  onToggleFavorite,
-  isPending,
-  isCreatingMix,
-  isFavorite,
-  favoriteDisabled,
-  meta,
-}: {
-  item: DiscoverTrackItem;
-  onQueueTrack: (track: Track) => Promise<void>;
-  onCreateMix: (track: Track) => Promise<void>;
-  onToggleFavorite: (track: Track) => Promise<void>;
-  isPending: boolean;
-  isCreatingMix: boolean;
-  isFavorite: boolean;
-  favoriteDisabled: boolean;
-  meta?: ReactNode;
-}) {
-  const openAlbum = useAlbumDialogStore((state) => state.openAlbum);
-  const openArtist = useArtistDialogStore((state) => state.openArtist);
-  const album = item.track.album;
-  const artistId = item.artistId || item.track.artistId;
-  const canOpenAlbum = Boolean(album?.id && album?.name);
-  const canOpenArtist = Boolean(artistId?.trim() && item.artist.trim());
-  const destinationLabel = canOpenAlbum
-    ? "展開專輯"
-    : canOpenArtist
-      ? "探索歌手"
-      : null;
-
-  return (
-    <Card className="flex min-h-[386px] w-[264px] shrink-0 flex-col rounded-[28px] p-4">
-      <button
-        type="button"
-        onClick={() => {
-          if (canOpenAlbum && album) {
-            openAlbum(album);
-            return;
-          }
-
-          if (canOpenArtist && artistId) {
-            openArtist({
-              id: artistId,
-              name: item.artist,
-            });
-          }
-        }}
-        disabled={!destinationLabel}
-        className={cn(
-          "flex min-h-[104px] items-start gap-4 text-left",
-          destinationLabel
-            ? "group transition-transform hover:-translate-y-0.5"
-            : "cursor-default",
-        )}
-      >
-        <Avatar
-          src={item.thumbnail || item.track.thumbnail}
-          alt={item.title}
-          size="lg"
-          className={cn(
-            "h-20 w-20 rounded-[22px] border border-[color:var(--surface-border)] transition-shadow",
-            destinationLabel &&
-              "group-hover:shadow-[0_20px_32px_-24px_var(--accent-glow)]",
-          )}
-        />
-        <div className="min-w-0 flex-1 space-y-3">
-          <div className="space-y-1.5">
-            <p
-              className={cn(
-                "min-h-[3rem] line-clamp-2 text-base font-semibold leading-6 text-[var(--text-primary)] transition-colors",
-                destinationLabel && "group-hover:text-[var(--accent)]",
-              )}
-            >
-              {item.title}
-            </p>
-            <p className="min-h-[2.5rem] line-clamp-2 text-sm leading-5 text-[var(--text-secondary)]">
-              {item.artist}
-            </p>
-          </div>
-          <div className="flex min-h-7 flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
-            <span className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2.5 py-1">
-              {item.presentation === "video" ? "影片" : "單曲"}
-            </span>
-            <span>{formatTime(item.duration || item.track.duration || 0)}</span>
-            {destinationLabel ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2.5 py-1 font-medium text-[var(--accent)]">
-                {destinationLabel}
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </button>
-
-      <div className="mt-4 flex min-h-0 flex-1 flex-col">
-        <div className="min-h-[2rem]">
-          {meta ? (
-            <div className="space-y-1 text-xs text-[var(--text-muted)]">{meta}</div>
-          ) : null}
-        </div>
-
-        <DiscoverCardDetailSlot className="mt-4 flex flex-col justify-end gap-3 text-xs text-[var(--text-muted)]">
-          <div className="flex min-h-[2.5rem] flex-wrap content-start gap-2">
-            {item.track.album ? (
-              <OpenAlbumButton
-                album={item.track.album}
-                trackTitle={item.track.title}
-                className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-                labelClassName="text-[11px]"
-              />
-            ) : null}
-            <OpenArtistButton
-              artistId={item.artistId || item.track.artistId}
-              artistName={item.artist}
-              className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-              labelClassName="text-[11px]"
-            />
-          </div>
-        </DiscoverCardDetailSlot>
-
-        <div className="mt-auto grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            onClick={() => {
-              void onQueueTrack(item.track);
-            }}
-            disabled={isPending || isCreatingMix}
-            className="rounded-[16px]"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                加入中
-              </>
-            ) : (
-              <>
-                <PlayCircle className="h-4 w-4" />
-                加入佇列
-              </>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              void onCreateMix(item.track);
-            }}
-            disabled={isPending || isCreatingMix}
-            className="rounded-[16px]"
-          >
-            {isCreatingMix ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                建立中
-              </>
-            ) : (
-              <>
-                <Radio className="h-4 w-4" />
-                建立 Mix
-              </>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant={isFavorite ? "default" : "ghost"}
-            onClick={() => {
-              void onToggleFavorite(item.track);
-            }}
-            disabled={favoriteDisabled}
-            className="col-span-2 rounded-[16px]"
-          >
-            <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-            {isFavorite ? "已收藏" : "加入收藏"}
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function CollectionDiscoverCard({
-  item,
-  onQueueCollection,
-  isPending,
-}: {
-  item: DiscoverCollectionItem;
-  onQueueCollection: (item: DiscoverCollectionItem) => Promise<void>;
-  isPending: boolean;
-}) {
-  const openAlbum = useAlbumDialogStore((state) => state.openAlbum);
-  const openPlaylist = usePlaylistDialogStore((state) => state.openPlaylist);
-  const destinationLabel =
-    item.kind === "album" ? "展開專輯" : "展開播放清單";
-
-  return (
-    <Card className="flex min-h-[386px] w-[280px] shrink-0 flex-col rounded-[28px] p-4">
-      <button
-        type="button"
-        onClick={() => {
-          if (item.kind === "album") {
-            openAlbum({
-              id: item.id,
-              name: item.title,
-            });
-            return;
-          }
-
-          openPlaylist({
-            id: item.id,
-            name: item.title,
-          });
-        }}
-        className={cn(
-          "group flex min-h-[104px] items-start gap-4 text-left transition-transform hover:-translate-y-0.5",
-        )}
-      >
-        <Avatar
-          src={item.thumbnail}
-          alt={item.title}
-          size="lg"
-          className={cn(
-            "h-20 w-20 rounded-[22px] border border-[color:var(--surface-border)] transition-shadow",
-            destinationLabel &&
-              "group-hover:shadow-[0_20px_32px_-24px_var(--accent-glow)]",
-          )}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="space-y-1.5">
-            <p
-              className={cn(
-                "min-h-[3rem] line-clamp-2 text-base font-semibold leading-6 text-[var(--text-primary)] transition-colors",
-                destinationLabel && "group-hover:text-[var(--accent)]",
-              )}
-            >
-              {item.title}
-            </p>
-            <p className="min-h-[2.5rem] line-clamp-2 text-sm leading-5 text-[var(--text-secondary)]">
-              {item.artist}
-            </p>
-          </div>
-        </div>
-      </button>
-
-      <div className="mt-4 flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-[2rem] flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
-          <span className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2.5 py-1">
-            {item.kind === "album" ? "專輯" : "播放清單"}
-          </span>
-          {item.trackCount ? <span>{item.trackCount} 首</span> : null}
-          <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-2.5 py-1 font-medium text-[var(--accent)]">
-            {destinationLabel}
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </span>
-        </div>
-
-        <DiscoverCardDetailSlot className="mt-4 flex flex-col justify-between gap-3 text-xs leading-5 text-[var(--text-muted)]">
-          <div className="min-h-[3rem]">
-            <p className="line-clamp-3">{getCollectionSupportText(item)}</p>
-          </div>
-          <div className="flex min-h-[2.5rem] flex-wrap content-start gap-2">
-            {item.kind === "album" ? (
-              <OpenAlbumButton
-                album={{
-                  id: item.id,
-                  name: item.title,
-                }}
-                className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-                labelClassName="text-[11px]"
-              />
-            ) : (
-              <OpenPlaylistButton
-                playlistId={item.id}
-                playlistName={item.title}
-                className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-                labelClassName="text-[11px]"
-              />
-            )}
-            <OpenArtistButton
-              artistId={item.artistId}
-              artistName={item.artist}
-              className="rounded-full border border-[color:var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-              labelClassName="text-[11px]"
-            />
-          </div>
-        </DiscoverCardDetailSlot>
-
-        <Button
-          type="button"
-          onClick={() => {
-            void onQueueCollection(item);
-          }}
-          disabled={isPending}
-          className="mt-auto rounded-[16px]"
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              加入中
-            </>
-          ) : (
-            <>
-              <ListMusic className="h-4 w-4" />
-              整組加入佇列
-            </>
-          )}
-        </Button>
-      </div>
-    </Card>
   );
 }
 
@@ -662,40 +1310,35 @@ function TopRequestedRail({
   }
 
   return (
-    <div className="-mx-1 overflow-x-auto pb-2">
-      <div className="flex min-w-full items-stretch gap-4 px-1">
-        {entries.map((entry) => (
-          <TrackDiscoverCard
-            key={entry.track.videoId}
-            item={{
-              kind: "track",
-              id: entry.track.videoId,
-              title: entry.track.title,
-              artist: entry.track.artist,
-              thumbnail: entry.track.thumbnail,
-              duration: entry.track.duration,
-              presentation: "song",
-              track: entry.track,
-            }}
-            onQueueTrack={onQueueTrack}
-            onCreateMix={onCreateMix}
-            onToggleFavorite={onToggleFavorite}
-            isPending={pendingTrackId === entry.track.videoId}
-            isCreatingMix={creatingMixId === entry.track.videoId}
-            isFavorite={favoriteTrackIds.has(entry.track.videoId)}
-            favoriteDisabled={!libraryReady}
-            meta={
-              <div className="space-y-1 text-xs text-[var(--text-muted)]">
-                <p>
-                  #{entry.rank} · 已點播 {entry.requestCount} 次
-                </p>
-                <p>最後更新：{formatLastRequestedAt(entry.lastRequestedAt)}</p>
-              </div>
-            }
-          />
-        ))}
-      </div>
-    </div>
+    <DiscoverHorizontalRail>
+      {entries.map((entry) => (
+        <TrackDiscoverCard
+          key={entry.track.videoId}
+          item={{
+            kind: "track",
+            id: entry.track.videoId,
+            title: entry.track.title,
+            artist: entry.track.artist,
+            thumbnail: entry.track.thumbnail,
+            duration: entry.track.duration,
+            presentation: "song",
+            track: entry.track,
+          }}
+          onQueueTrack={onQueueTrack}
+          onCreateMix={onCreateMix}
+          onToggleFavorite={onToggleFavorite}
+          isPending={pendingTrackId === entry.track.videoId}
+          isCreatingMix={creatingMixId === entry.track.videoId}
+          isFavorite={favoriteTrackIds.has(entry.track.videoId)}
+          favoriteDisabled={!libraryReady}
+          rankingMeta={{
+            rank: entry.rank,
+            requestCount: entry.requestCount,
+            lastRequestedAt: entry.lastRequestedAt,
+          }}
+        />
+      ))}
+    </DiscoverHorizontalRail>
   );
 }
 
@@ -723,9 +1366,7 @@ export const DiscoverView = ({ isMobile = false }: DiscoverViewProps) => {
   const marketsError = useDiscoverStore((state) => state.marketsError);
   const feedError = useDiscoverStore((state) => state.feedError);
   const libraryReady = useLibraryStore((state) => state.ready);
-  const favorites = useLibraryStore(
-    (state) => state.snapshot?.favorites ?? [],
-  );
+  const favorites = useLibraryStore((state) => state.snapshot?.favorites ?? []);
   const saveMix = useLibraryStore((state) => state.saveMix);
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const currentRequester = useLibraryStore((state) =>
