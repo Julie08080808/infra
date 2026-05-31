@@ -43,12 +43,20 @@ resource "helm_release" "local_path_provisioner" {
 module "harbor" {
   source = "./modules/harbor"
 
+  harbor_admin_password = var.harbor_admin_password
+
   depends_on = [helm_release.local_path_provisioner]
 }
 
 # ARC
 module "arc" {
   source = "./modules/arc"
+
+  github_app_id              = var.github_app_id
+  github_app_installation_id = var.github_app_installation_id
+  github_app_private_key     = var.github_app_private_key
+  github_owner               = var.github_owner
+  github_repo                = "youtube-music-bot"
 
   depends_on = [module.namespaces]
 }
