@@ -1,0 +1,13 @@
+# Terraform state（包含敏感資料）
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# 敏感變數檔案
+terraform.tfvars
+*.tfvars
+
+# 暫存檔案
+*.tfplan
+crash.log
