@@ -1,0 +1,16 @@
+name: Test ARC Runner
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: arc-runner-set
+    steps:
+      - name: Hello from Kata
+        run: |
+          echo "Runner 起來了！"
+          uname -a
+          cat /proc/version
