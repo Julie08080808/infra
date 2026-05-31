@@ -60,7 +60,7 @@ resource "helm_release" "harbor" {
 
 resource "harbor_project" "ci" {
   name        = "ci"
-  public      = true
+  public      = false
 
   depends_on = [helm_release.harbor]
 }
