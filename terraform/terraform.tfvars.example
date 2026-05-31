@@ -1,0 +1,18 @@
+# 複製這個檔案為 terraform.tfvars 並填入真實值
+# cp terraform.tfvars.example terraform.tfvars
+
+harbor_admin_password = "你的Harbor密碼"
+
+github_token = "ghp_xxx..."
+
+github_owner = "Julie08080808"
+
+github_app_id = "你的AppID"
+
+github_app_installation_id = "你的InstallationID"
+
+github_app_private_key = <<EOT
+-----BEGIN RSA PRIVATE KEY-----
+貼上你的.pem內容
+-----END RSA PRIVATE KEY-----
+EOT
