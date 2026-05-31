@@ -45,7 +45,15 @@ module "harbor" {
 
   harbor_admin_password = var.harbor_admin_password
 
-  depends_on = [helm_release.local_path_provisioner]
+  providers = {
+    helm   = helm
+    harbor = harbor
+  }
+
+  depends_on = [
+    module.namespaces,
+    helm_release.local_path_provisioner
+  ]
 }
 
 # ARC
