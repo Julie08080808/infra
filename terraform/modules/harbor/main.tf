@@ -69,7 +69,6 @@ resource "harbor_robot_account" "arc_runner" {
   name        = "arc-runner"
   description = "Robot account for ARC Runner to push images"
   level       = "project"
-  project_name = harbor_project.ci.name
 
   permissions {
     access {
