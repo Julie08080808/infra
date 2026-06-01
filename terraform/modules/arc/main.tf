@@ -24,9 +24,10 @@ resource "helm_release" "arc_runner_set" {
   repository = "oci://ghcr.io/actions/actions-runner-controller-charts"
   chart      = "gha-runner-scale-set"
   namespace  = "arc-runners"
+  version    = "0.14.2" # 強制綁定版本，避免漂移
 
   values = [
-    jsonencode({
+    yamlencode({
       githubConfigUrl    = var.github_repo
       githubConfigSecret = kubernetes_secret.github_app_secret.metadata[0].name
       minRunners         = 0
@@ -49,16 +50,6 @@ resource "helm_release" "arc_runner_set" {
               name    = "runner"
               image   = "10.32.20.51:30443/ci/arc-runner:latest"
               command = ["/home/runner/run.sh"]
-              resources = {
-                requests = {
-                  cpu    = "1"
-                  memory = "4Gi"
-                }
-                limits = {
-                  cpu    = "4"
-                  memory = "8Gi"
-                }
-              }
             }
           ]
         }
