@@ -1,10 +1,10 @@
 provider "kubernetes" {
-  config_path = var.kubeconfig_path
+  config_path = "/home/jerry/.kube/config"
 }
 
 provider "helm" {
   kubernetes {
-    config_path = var.kubeconfig_path
+    config_path = "/home/jerry/.kube/config"
   }
 }
 

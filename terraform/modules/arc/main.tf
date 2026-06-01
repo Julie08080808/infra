@@ -41,7 +41,7 @@ resource "helm_release" "arc_runner_set" {
           
           imagePullSecrets = [
             {
-              name = "harbor-auth"
+              name = "harbor-registry-secret"
             }
           ]
 
