@@ -41,7 +41,7 @@ resource "helm_release" "arc_runner_set" {
           containers = [
             {
               name    = "runner"
-              image   = "ghcr.io/actions/actions-runner:latest"
+              image   = "10.32.20.51:30443/ci/arc-runner:latest"
               command = ["/home/runner/run.sh"]
               resources = {
                 requests = {
