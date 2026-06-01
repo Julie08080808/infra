@@ -20,17 +20,23 @@ resource "helm_release" "arc_controller" {
 }
 
 resource "helm_release" "arc_runner_set" {
-  name      = "arc-runner-set"
-  namespace = "arc-runners"
-  chart     = "oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set"
+  name       = "arc-runner-set"
+  repository = "https://actions-runner-controller.github.io/actions-runner-controller"
+  chart      = "gha-runner-scale-set"
+  namespace  = "arc-runners"
 
   values = [
-    yamlencode({
-      githubConfigUrl    = "https://github.com/${var.github_owner}/${var.github_repo}"
-      githubConfigSecret = "github-app-secret"
+    jsonencode({
+      githubConfigUrl    = var.github_repo
+      githubConfigSecret = kubernetes_secret.github_app_secret.metadata[0].name
+      minRunners         = 0
+      maxRunners         = 5
 
-      minRunners = 0
-      maxRunners = 5
+      imagePullSecrets = [
+        {
+          name = "harbor-registry-secret"
+        }
+      ]
 
       template = {
         spec = {
@@ -38,13 +44,6 @@ resource "helm_release" "arc_runner_set" {
           nodeSelector = {
             kata = "true"
           }
-          
-          imagePullSecrets = [
-            {
-              name = "harbor-registry-secret"
-            }
-          ]
-
           containers = [
             {
               name    = "runner"
@@ -67,5 +66,7 @@ resource "helm_release" "arc_runner_set" {
     })
   ]
 
-  depends_on = [helm_release.arc_controller]
+  depends_on = [
+    helm_release.arc_controller
+  ]
 }
