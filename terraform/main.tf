@@ -56,6 +56,18 @@ module "harbor" {
   ]
 }
 
+# Secrets
+module "secrets" {
+  source = "./modules/secrets"
+
+  harbor_url             = var.harbor_url
+  harbor_runner_username = var.harbor_runner_username
+  harbor_runner_password = var.harbor_runner_password
+
+  depends_on = [module.namespaces]
+}
+
+
 # ARC
 module "arc" {
   source = "./modules/arc"
@@ -66,5 +78,8 @@ module "arc" {
   github_owner               = var.github_owner
   github_repo                = "youtube-music-bot"
 
-  depends_on = [module.namespaces]
+  depends_on = [
+    module.namespaces,
+    module.secrets
+  ]
 }

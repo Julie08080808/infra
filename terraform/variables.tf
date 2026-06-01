@@ -43,3 +43,16 @@ variable "kubeconfig_path" {
   type        = string
   default     = "~/.kube/config"
 }
+
+variable "harbor_runner_username" {
+  description = "Harbor Robot Account username for ARC Runner"
+  type        = string
+  default     = "robot$arc-runner"
+}
+
+variable "harbor_runner_password" {
+  description = "Harbor Robot Account password for ARC Runner"
+  type        = string
+  sensitive   = true
+}
+
