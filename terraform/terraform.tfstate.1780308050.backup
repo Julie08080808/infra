@@ -1,0 +1,823 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.5",
+  "serial": 28,
+  "lineage": "5d206ac9-856c-0b1e-ed22-01c68c014b31",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "local_path_provisioner",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "local-path-provisioner",
+            "cleanup_on_fail": false,
+            "create_namespace": true,
+            "dependency_update": false,
+            "description": null,
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "local-path-provisioner",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "v0.0.36",
+                "chart": "local-path-provisioner",
+                "first_deployed": 1780260528,
+                "last_deployed": 1780260528,
+                "name": "local-path-provisioner",
+                "namespace": "local-path-storage",
+                "notes": "You can create a hostpath-backed persistent volume with a persistent volume claim like this:\n\napiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: local-path-pvc\nspec:\n  accessModes:\n    - ReadWriteOnce\n  storageClassName: local-path\n  resources:\n    requests:\n      storage: 2Gi\n",
+                "revision": 1,
+                "values": "{\"storageClass\":{\"defaultClass\":true}}",
+                "version": "0.0.37"
+              }
+            ],
+            "name": "local-path-provisioner",
+            "namespace": "local-path-storage",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": "https://charts.containeroo.ch",
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [
+              {
+                "name": "storageClass.defaultClass",
+                "type": "",
+                "value": "true"
+              }
+            ],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "deployed",
+            "timeout": 300,
+            "upgrade_install": null,
+            "values": null,
+            "verify": false,
+            "version": "0.0.37",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.arc",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "arc_controller",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller",
+            "cleanup_on_fail": false,
+            "create_namespace": false,
+            "dependency_update": false,
+            "description": null,
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "arc",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "0.14.2",
+                "chart": "gha-runner-scale-set-controller",
+                "first_deployed": 1780260822,
+                "last_deployed": 1780260822,
+                "name": "arc",
+                "namespace": "arc-systems",
+                "notes": "Thank you for installing gha-runner-scale-set-controller.\n\nYour release is named arc.\n",
+                "revision": 1,
+                "values": "{}",
+                "version": "0.14.2"
+              }
+            ],
+            "name": "arc",
+            "namespace": "arc-systems",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": null,
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "deployed",
+            "timeout": 300,
+            "upgrade_install": null,
+            "values": null,
+            "verify": false,
+            "version": "0.14.2",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ==",
+          "dependencies": [
+            "module.arc.kubernetes_secret.github_app_secret",
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring",
+            "module.secrets.kubernetes_secret.harbor_registry_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.arc",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "arc_runner_set",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "gha-runner-scale-set",
+            "cleanup_on_fail": false,
+            "create_namespace": false,
+            "dependency_update": false,
+            "description": null,
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "arc-runner-set",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "0.14.2",
+                "chart": "gha-runner-scale-set",
+                "first_deployed": 1780306676,
+                "last_deployed": 1780307211,
+                "name": "arc-runner-set",
+                "namespace": "arc-runners",
+                "notes": "Thank you for installing gha-runner-scale-set.\n\nYour release is named arc-runner-set.",
+                "revision": 2,
+                "values": "{\"githubConfigSecret\":\"github-app-secret\",\"githubConfigUrl\":\"youtube-music-bot\",\"imagePullSecrets\":[{\"name\":\"harbor-registry-secret\"}],\"maxRunners\":5,\"minRunners\":0,\"template\":{\"spec\":{\"containers\":[{\"command\":[\"/home/runner/run.sh\"],\"image\":\"10.32.20.51:30443/ci/arc-runner:latest\",\"name\":\"runner\",\"resources\":{\"limits\":{\"cpu\":\"4\",\"memory\":\"8Gi\"},\"requests\":{\"cpu\":\"1\",\"memory\":\"4Gi\"}}}],\"nodeSelector\":{\"kata\":\"true\"},\"runtimeClassName\":\"kata\"}}}",
+                "version": "0.14.2"
+              }
+            ],
+            "name": "arc-runner-set",
+            "namespace": "arc-runners",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": "oci://ghcr.io/actions/actions-runner-controller-charts",
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "uninstalling",
+            "timeout": 300,
+            "upgrade_install": null,
+            "values": [
+              "{\"githubConfigSecret\":\"github-app-secret\",\"githubConfigUrl\":\"youtube-music-bot\",\"imagePullSecrets\":[{\"name\":\"harbor-registry-secret\"}],\"maxRunners\":5,\"minRunners\":0,\"template\":{\"spec\":{\"containers\":[{\"command\":[\"/home/runner/run.sh\"],\"image\":\"10.32.20.51:30443/ci/arc-runner:latest\",\"name\":\"runner\",\"resources\":{\"limits\":{\"cpu\":\"4\",\"memory\":\"8Gi\"},\"requests\":{\"cpu\":\"1\",\"memory\":\"4Gi\"}}}],\"nodeSelector\":{\"kata\":\"true\"},\"runtimeClassName\":\"kata\"}}}"
+            ],
+            "verify": false,
+            "version": "0.14.2",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ==",
+          "dependencies": [
+            "module.arc.helm_release.arc_controller",
+            "module.arc.kubernetes_secret.github_app_secret",
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring",
+            "module.secrets.kubernetes_secret.harbor_registry_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.arc",
+      "mode": "managed",
+      "type": "kubernetes_secret",
+      "name": "github_app_secret",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "binary_data": null,
+            "binary_data_wo": null,
+            "binary_data_wo_revision": null,
+            "data": {
+              "github_app_id": "3921896",
+              "github_app_installation_id": "136970434",
+              "github_app_private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEApiczYiglno1zmWydsRIwClNIheOv1qPG8cwYhKjo7On2SvfI\nLy6YKClaB7IwKeg8lfoPienCi+46RFgE8Vsmf53GwB5vhFNCze/yMggmCMAEpw5t\nfsLCxSzaif82yaMZ7oezj8SRqvrMGE/9ASwXIqqL5h1rr6i5Mzlcb/2AHaEKCElZ\nz1aJ9TqZU4wilbvOVKga80c+qRL0O68CT9xSbmqt6HmISh/mobxQYIAkEk77wymk\n2kq83+CEKvcoVBwf47hvEBKimu9Y42siSY76WIAXxf9lL/OcvuahSxhi3aM8cw+c\nZViemza7oWKwWRpUmrD/lubTFUdR1k2U8M+aiwIDAQABAoIBAFFZShAZ5elOCjYo\n9sAWTo0Pn6dmBdaKE0KZkbuJ05kDJ8ImtM1c+8RWEq1H8cri2J75cpgsakMGnWKO\n0cS1wxCiWAgCHslj1oZrn2IdmTmZge2k47k3dBMD1e/Qk6t/fpfJuwF91XAoILsa\nlp33T1B6vcopx2qWqi5JPFfcftiCEPOSqT/mZ5aEabgcOHns+xRhSphMLId1Nflq\n+HWeTIyM9xW8sm8coLsPOjMnITSwb41TekV5eT8XrKC1hNlefA14Fk0n4rvpYP/X\nzhcjAIgJgT3oHKlpQkWrDbJKMXed/v8GjXkTUij/EppFcdwtc7nzucaJpoUMQnRu\nnsJWkikCgYEA1+2musx2ipiqSc/9LNv7qkOr4GiiX/tLgAx9r5GHVefMkrMW90Gr\nbC269BANbmRcG+Iij5TZuVzIQ09a+mvJeUfpO5pqS+G6wNQduDE+ZfmixC7BKi6N\n3NhTi+VwQpZict/Pc/F9iRfnZCGAJk4vWBF1DXlSnJVEY3Gv2n3HYfUCgYEAxPzS\nyaB7NCF35y9zmwTe46WHyx6q3Okbnx5b311NPPfFFU6VD1TIcXzu8dEWdCGSv/vP\nhHMKHqRNFHixnt2EfvTxInS05816OK1k5zIBEgVIqA/VGITfZb0HZX0U+eFXqg+K\nUgXDxwsx00OqDT+7WUfbNgA5Lg+38GfxRpCSun8CgYAu0zaI47YBMEIdZ6E7jSjy\nL2Kic45iyhgBWLQY0rJKis3uMjAUxoTqHLCiJKkE+3aOBWgBQwJEFD7Jeff8vkse\npd2KM15Bvl3FWzpmqycg7hXB/XGeOCJDdhYIDGVfy0TmLGrMdd4HUMu5BxrHM8VI\nj+CWX2zuz9/YwNqlwwjt0QKBgBV9t8mDlq1zUU+Jn8Uz3NVdQ9lnOSDs1bSgbUmL\nNlgGeBwA/MY1a8Dl7nO3agm1d/s2D8fVfS8mobowCMDaThBDzOMDdJEtm73/PNj0\nXaWHqgub3pXUOUMyQlJSOS2h5hyJoX+dXWSj1gXEhhL39wqgikvz7kkWMe0qieo2\n76slAoGAVZ0dJRJ616aVcvoUWXsjV8WQpaFOSvV9u5Pg1Ly4jw4x1GUPQILtmBXr\n0b0pUIvAi/3Dq9Vv02Zov/wk5GaautQnsaSL9qSp7PdecQAnYh2f9SQgAyRQhPL1\nMBAzAisi/CZSlD9apDdZi4rrvAHnl6FFZrCScCaSLru1fcOphhU=\n-----END RSA PRIVATE KEY-----\n"
+            },
+            "data_wo": null,
+            "data_wo_revision": null,
+            "id": "arc-runners/github-app-secret",
+            "immutable": false,
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "github-app-secret",
+                "namespace": "arc-runners",
+                "resource_version": "725049",
+                "uid": "a4fe5e37-07b0-4e25-849a-f87fad273e7c"
+              }
+            ],
+            "timeouts": null,
+            "type": "Opaque",
+            "wait_for_service_account_token": true
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "binary_data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "github_app_id",
+                  "type": "string"
+                }
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "github_app_installation_id",
+                  "type": "string"
+                }
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "github_app_private_key",
+                  "type": "string"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Secret",
+            "name": "github-app-secret",
+            "namespace": "arc-runners"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring",
+            "module.secrets.kubernetes_secret.harbor_registry_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.harbor",
+      "mode": "managed",
+      "type": "harbor_project",
+      "name": "ci",
+      "provider": "provider[\"registry.terraform.io/goharbor/harbor\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "auto_sbom_generation": false,
+            "cve_allowlist": [],
+            "deployment_security": "",
+            "enable_content_trust": false,
+            "enable_content_trust_cosign": false,
+            "force_destroy": false,
+            "id": "/projects/2",
+            "name": "ci",
+            "project_id": 2,
+            "proxy_speed_kb": -1,
+            "public": false,
+            "registry_id": 0,
+            "storage_quota": -1,
+            "vulnerability_scanner": null,
+            "vulnerability_scanning": true
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "helm_release.local_path_provisioner",
+            "module.harbor.helm_release.harbor",
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.harbor",
+      "mode": "managed",
+      "type": "harbor_robot_account",
+      "name": "arc_runner",
+      "provider": "provider[\"registry.terraform.io/goharbor/harbor\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "description": "Robot account for ARC Runner to push images",
+            "disable": false,
+            "duration": -1,
+            "full_name": "robot$ci+arc-runner",
+            "id": "/robots/1",
+            "level": "project",
+            "name": "arc-runner",
+            "permissions": [
+              {
+                "access": [
+                  {
+                    "action": "pull",
+                    "effect": "",
+                    "resource": "repository"
+                  },
+                  {
+                    "action": "push",
+                    "effect": "",
+                    "resource": "repository"
+                  }
+                ],
+                "kind": "project",
+                "namespace": "ci"
+              }
+            ],
+            "robot_id": "1",
+            "secret": "IehXxSRcJd01Bxs6eYelVQoFrLTBRygk",
+            "secret_wo": null,
+            "secret_wo_version": null
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "secret"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "helm_release.local_path_provisioner",
+            "module.harbor.harbor_project.ci",
+            "module.harbor.helm_release.harbor",
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.harbor",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "harbor",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "harbor",
+            "cleanup_on_fail": false,
+            "create_namespace": false,
+            "dependency_update": false,
+            "description": null,
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "harbor",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "2.15.1",
+                "chart": "harbor",
+                "first_deployed": 1780260533,
+                "last_deployed": 1780260533,
+                "name": "harbor",
+                "namespace": "harbor",
+                "notes": "Please wait for several minutes for Harbor deployment to complete.\nThen you should be able to visit the Harbor portal at https://10.32.20.51:30443\nFor more details, please visit https://github.com/goharbor/harbor\n",
+                "revision": 1,
+                "values": "{\"expose\":{\"nodePort\":{\"ports\":{\"http\":{\"nodePort\":30080},\"https\":{\"nodePort\":30443}}},\"tls\":{\"auto\":{\"commonName\":\"10.32.20.51\"},\"enabled\":true},\"type\":\"nodePort\"},\"externalURL\":\"https://10.32.20.51:30443\",\"harborAdminPassword\":\"Harbor12345\",\"nodeSelector\":{\"dedicated\":\"production-storage\"},\"persistence\":{\"enabled\":true,\"persistentVolumeClaim\":{\"database\":{\"size\":\"1Gi\"},\"jobservice\":{\"size\":\"1Gi\"},\"redis\":{\"size\":\"1Gi\"},\"registry\":{\"size\":\"20Gi\"}},\"resourcePolicy\":\"keep\"}}",
+                "version": "1.19.1"
+              }
+            ],
+            "name": "harbor",
+            "namespace": "harbor",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": "https://helm.goharbor.io",
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "deployed",
+            "timeout": 600,
+            "upgrade_install": null,
+            "values": [
+              "\"expose\":\n  \"nodePort\":\n    \"ports\":\n      \"http\":\n        \"nodePort\": 30080\n      \"https\":\n        \"nodePort\": 30443\n  \"tls\":\n    \"auto\":\n      \"commonName\": \"10.32.20.51\"\n    \"enabled\": true\n  \"type\": \"nodePort\"\n\"externalURL\": \"https://10.32.20.51:30443\"\n\"harborAdminPassword\": \"Harbor12345\"\n\"nodeSelector\":\n  \"dedicated\": \"production-storage\"\n\"persistence\":\n  \"enabled\": true\n  \"persistentVolumeClaim\":\n    \"database\":\n      \"size\": \"1Gi\"\n    \"jobservice\":\n      \"size\": \"1Gi\"\n    \"redis\":\n      \"size\": \"1Gi\"\n    \"registry\":\n      \"size\": \"20Gi\"\n  \"resourcePolicy\": \"keep\"\n"
+            ],
+            "verify": false,
+            "version": "1.19.1",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "values"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": 0,
+                  "type": "number"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ==",
+          "dependencies": [
+            "helm_release.local_path_provisioner",
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.namespaces",
+      "mode": "managed",
+      "type": "kubernetes_namespace",
+      "name": "arc_runners",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "arc-runners",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {
+                  "app.kubernetes.io/managed-by": "terraform"
+                },
+                "name": "arc-runners",
+                "resource_version": "723993",
+                "uid": "4fbddc41-ddeb-4b9c-8fa2-55d3fb2213ac"
+              }
+            ],
+            "timeouts": null,
+            "wait_for_default_service_account": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Namespace",
+            "name": "arc-runners"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.namespaces",
+      "mode": "managed",
+      "type": "kubernetes_namespace",
+      "name": "arc_systems",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "arc-systems",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {
+                  "app.kubernetes.io/managed-by": "terraform"
+                },
+                "name": "arc-systems",
+                "resource_version": "723991",
+                "uid": "c7ae1d4e-9c61-459a-ae11-f05dbe34b712"
+              }
+            ],
+            "timeouts": null,
+            "wait_for_default_service_account": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Namespace",
+            "name": "arc-systems"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.namespaces",
+      "mode": "managed",
+      "type": "kubernetes_namespace",
+      "name": "harbor",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "harbor",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {
+                  "app.kubernetes.io/managed-by": "terraform"
+                },
+                "name": "harbor",
+                "resource_version": "723994",
+                "uid": "22ca3e9f-f449-4f3d-961b-b369c9fa55ca"
+              }
+            ],
+            "timeouts": null,
+            "wait_for_default_service_account": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Namespace",
+            "name": "harbor"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.namespaces",
+      "mode": "managed",
+      "type": "kubernetes_namespace",
+      "name": "monitoring",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "monitoring",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {
+                  "app.kubernetes.io/managed-by": "terraform"
+                },
+                "name": "monitoring",
+                "resource_version": "723992",
+                "uid": "2a57f335-1809-4c1d-b850-413554bb481b"
+              }
+            ],
+            "timeouts": null,
+            "wait_for_default_service_account": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Namespace",
+            "name": "monitoring"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.secrets",
+      "mode": "managed",
+      "type": "kubernetes_secret",
+      "name": "harbor_registry_secret",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "binary_data": null,
+            "binary_data_wo": null,
+            "binary_data_wo_revision": null,
+            "data": {
+              ".dockerconfigjson": "{\"auths\":{\"10.32.20.51:30443\":{\"auth\":\"cm9ib3QkYXJjLXJ1bm5lcjpIYXJib3IxMjM0NQ==\",\"password\":\"Harbor12345\",\"username\":\"robot$arc-runner\"}}}"
+            },
+            "data_wo": null,
+            "data_wo_revision": null,
+            "id": "arc-runners/harbor-registry-secret",
+            "immutable": false,
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "harbor-registry-secret",
+                "namespace": "arc-runners",
+                "resource_version": "818437",
+                "uid": "3ea7d993-5f94-4f2d-af04-940a4dccf6ab"
+              }
+            ],
+            "timeouts": null,
+            "type": "kubernetes.io/dockerconfigjson",
+            "wait_for_service_account_token": true
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "binary_data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": ".dockerconfigjson",
+                  "type": "string"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Secret",
+            "name": "harbor-registry-secret",
+            "namespace": "arc-runners"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "module.namespaces.kubernetes_namespace.arc_runners",
+            "module.namespaces.kubernetes_namespace.arc_systems",
+            "module.namespaces.kubernetes_namespace.harbor",
+            "module.namespaces.kubernetes_namespace.monitoring"
+          ]
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
