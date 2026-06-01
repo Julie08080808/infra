@@ -65,41 +65,35 @@ variable "min_runners" {
 variable "max_runners" {
   description = "Maximum number of runners"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "runner_cpu_request" {
-  description = "Runner CPU request"
-  type        = string
-  default     = "1"
+  type    = string
+  default = "2"
 }
 
 variable "runner_memory_request" {
-  description = "Runner memory request"
-  type        = string
-  default     = "3Gi"
+  type    = string
+  default = "4Gi"
 }
 
 variable "runner_ephemeral_storage_request" {
-  description = "Runner ephemeral storage request"
-  type        = string
-  default     = "4Gi"
+  type    = string
+  default = "8Gi"
 }
 
 variable "runner_cpu_limit" {
-  description = "Runner CPU limit"
-  type        = string
-  default     = "3"
+  type    = string
+  default = "3"
 }
 
 variable "runner_memory_limit" {
-  description = "Runner memory limit"
-  type        = string
-  default     = "8Gi"
+  type    = string
+  default = "10Gi"
 }
 
 variable "runner_ephemeral_storage_limit" {
-  description = "Runner ephemeral storage limit"
-  type        = string
-  default     = "16Gi"
+  type    = string
+  default = "24Gi"
 }
