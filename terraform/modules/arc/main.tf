@@ -21,7 +21,7 @@ resource "helm_release" "arc_controller" {
 
 resource "helm_release" "arc_runner_set" {
   name       = "arc-runner-set"
-  repository = "https://actions-runner-controller.github.io/actions-runner-controller"
+  repository = "oci://ghcr.io/actions/actions-runner-controller-charts"
   chart      = "gha-runner-scale-set"
   namespace  = "arc-runners"
 
