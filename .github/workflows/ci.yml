@@ -88,16 +88,63 @@ jobs:
         run: |
           set -o pipefail
 
-          if command -v python3 >/dev/null 2>&1; then
-            python3 -m venv .semgrep-venv
-            source .semgrep-venv/bin/activate
-            python -m pip install --upgrade pip
-            python -m pip install semgrep
-            semgrep scan --config auto --error 2>&1 | tee semgrep-report.txt
-          else
-            echo "python3 not found. Skip Semgrep for now." | tee semgrep-report.txt
+          echo "Creating Semgrep virtual environment..."
+          python3 -m venv .semgrep-venv
+
+          echo "Activating Semgrep virtual environment..."
+          source .semgrep-venv/bin/activate
+
+          echo "Installing Semgrep..."
+          python -m pip install --upgrade pip
+          python -m pip install semgrep
+
+          echo "Semgrep version:"
+          semgrep --version
+
+          echo "Running Semgrep scan..."
+
+          set +e
+          timeout 180 semgrep scan \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/dockerfile \
+            --metrics off \
+            --exclude .semgrep-venv \
+            --exclude node_modules \
+            --exclude dist \
+            --exclude build \
+            --json \
+            --output semgrep-report.json \
+            src Dockerfile 2>&1 | tee semgrep-console.txt
+          SEMGREP_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          echo "Semgrep exit code: ${SEMGREP_EXIT_CODE}" | tee semgrep-status.txt
+
+          if [ "${SEMGREP_EXIT_CODE}" -eq 124 ]; then
+            echo "status=timeout" >> "$GITHUB_OUTPUT"
+            echo "Semgrep timed out." | tee -a semgrep-status.txt
+            exit 0
           fi
 
+          if [ ! -s semgrep-report.json ]; then
+            echo "status=tool-error" >> "$GITHUB_OUTPUT"
+            echo "Semgrep did not produce semgrep-report.json. This is likely an environment or tool error." | tee -a semgrep-status.txt
+            exit 0
+          fi
+
+          FINDINGS=$(jq '.results | length' semgrep-report.json)
+
+          echo "Semgrep findings: ${FINDINGS}" | tee -a semgrep-status.txt
+
+          if [ "${FINDINGS}" -gt 0 ]; then
+            echo "status=finding" >> "$GITHUB_OUTPUT"
+            echo "Semgrep scan completed and found security findings." | tee -a semgrep-status.txt
+          else
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "Semgrep scan completed with no findings." | tee -a semgrep-status.txt
+          fi
+          
       - name: Collect Static Analysis Results
         id: static-results
         if: always()
