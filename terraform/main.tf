@@ -61,10 +61,17 @@ module "secrets" {
   source = "./modules/secrets"
 
   harbor_url             = var.harbor_url
-  harbor_runner_username = var.harbor_runner_username
-  harbor_runner_password = var.harbor_runner_password
+  harbor_runner_username = module.harbor.robot_account_full_name
+  harbor_runner_password = module.harbor.robot_account_secret
 
-  depends_on = [module.namespaces]
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  depends_on = [
+    module.namespaces,
+    module.harbor
+  ]
 }
 
 
