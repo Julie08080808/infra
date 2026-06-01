@@ -28,7 +28,7 @@ resource "helm_release" "arc_runner_set" {
 
   values = [
     yamlencode({
-      githubConfigUrl    = https://github.com/Julie08080808/youtube-music-bot
+      githubConfigUrl    = "https://github.com/Julie08080808/youtube-music-bot"
       githubConfigSecret = kubernetes_secret.github_app_secret.metadata[0].name
       minRunners         = 0
       maxRunners         = 5
