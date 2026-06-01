@@ -87,12 +87,15 @@ jobs:
         run: |
           set -o pipefail
 
+          echo "Building and pushing image:"
+          echo "${IMAGE_SHA}"
+
           buildctl --addr "${BUILDKIT_HOST}" build \
             --frontend dockerfile.v0 \
             --local context=. \
             --local dockerfile=. \
             --opt filename=Dockerfile \
-            --output type=image,name="${IMAGE_SHA},${IMAGE_LATEST}",push=true
+            --output type=image,name="${IMAGE_SHA}",push=true
 
       - name: Write Build Summary
         if: always()
@@ -103,5 +106,4 @@ jobs:
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Registry | \`${REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Image SHA | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Image Latest | \`${IMAGE_LATEST}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
