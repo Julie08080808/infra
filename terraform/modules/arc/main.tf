@@ -38,6 +38,13 @@ resource "helm_release" "arc_runner_set" {
           nodeSelector = {
             kata = "true"
           }
+          
+          imagePullSecrets = [
+            {
+              name = "harbor-auth"
+            }
+          ]
+
           containers = [
             {
               name    = "runner"
