@@ -1,3 +1,4 @@
+```yaml
 name: Main Build
 
 on:
@@ -13,8 +14,9 @@ permissions:
   contents: read
 
 env:
-  REGISTRY: harbor-registry.harbor.svc.cluster.local:5000
-  EXTERNAL_REGISTRY: 10.32.20.51:30443
+  # 正式 Harbor HTTPS 入口
+  # BuildKit image rootless-ca 已經內建 harbor-ca.crt
+  REGISTRY: 10.32.20.51:30443
 
   IMAGE_NAME: ci/youtube-music-bot
   BUILDKIT_HOST: tcp://buildkitd.ci-build.svc.cluster.local:1234
@@ -35,6 +37,8 @@ jobs:
 
       - name: Show Runner and BuildKit Info
         run: |
+          set -o pipefail
+
           echo "Runner name: $RUNNER_NAME"
           echo "Runner OS: $RUNNER_OS"
           echo "SHA: $GITHUB_SHA"
@@ -53,17 +57,19 @@ jobs:
 
       - name: Prepare Image Tags
         run: |
+          set -o pipefail
+
           SHORT_SHA="${GITHUB_SHA::7}"
 
           IMAGE_SHA="${REGISTRY}/${IMAGE_NAME}:${SHORT_SHA}"
-          IMAGE_EXTERNAL="${EXTERNAL_REGISTRY}/${IMAGE_NAME}:${SHORT_SHA}"
+          IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
 
           echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
           echo "IMAGE_SHA=${IMAGE_SHA}" >> "$GITHUB_ENV"
-          echo "IMAGE_EXTERNAL=${IMAGE_EXTERNAL}" >> "$GITHUB_ENV"
+          echo "IMAGE_LATEST=${IMAGE_LATEST}" >> "$GITHUB_ENV"
 
-          echo "Internal push image: ${IMAGE_SHA}"
-          echo "External pull image: ${IMAGE_EXTERNAL}"
+          echo "Image SHA tag: ${IMAGE_SHA}"
+          echo "Image latest tag: ${IMAGE_LATEST}"
 
       - name: Configure Harbor Auth
         env:
@@ -94,13 +100,33 @@ jobs:
           echo "DOCKER_CONFIG=$HOME/.docker" >> "$GITHUB_ENV"
           echo "Harbor auth configured for ${REGISTRY}."
 
+      - name: Configure Harbor CA for buildctl client
+        env:
+          HARBOR_CA_CRT: ${{ secrets.HARBOR_CA_CRT }}
+        run: |
+          set -o pipefail
+
+          if [ -z "$HARBOR_CA_CRT" ]; then
+            echo "HARBOR_CA_CRT is empty or not configured."
+            echo "Skip client-side CA setup."
+            exit 0
+          fi
+
+          mkdir -p "$RUNNER_TEMP/certs"
+          printf "%s\n" "$HARBOR_CA_CRT" > "$RUNNER_TEMP/certs/harbor-ca.crt"
+
+          echo "SSL_CERT_FILE=$RUNNER_TEMP/certs/harbor-ca.crt" >> "$GITHUB_ENV"
+
+          echo "Harbor CA configured for buildctl client."
+          grep "BEGIN CERTIFICATE" "$RUNNER_TEMP/certs/harbor-ca.crt"
+
       - name: Verify Harbor Auth Registry Key
         run: |
           set -o pipefail
 
           echo "REGISTRY=${REGISTRY}"
           echo "IMAGE_SHA=${IMAGE_SHA}"
-          echo "IMAGE_EXTERNAL=${IMAGE_EXTERNAL}"
+          echo "IMAGE_LATEST=${IMAGE_LATEST}"
           echo "DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}"
 
           echo "Docker config auth keys:"
@@ -129,20 +155,10 @@ jobs:
 
           echo "Harbor auth registry key is consistent."
 
-      - name: Test Harbor Registry Auth
-        env:
-          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+      - name: Check Dockerfile
         run: |
           set -o pipefail
 
-          echo "Testing direct registry backend auth..."
-          curl -i -u "${HARBOR_USERNAME}:${HARBOR_PASSWORD}" \
-            "http://${REGISTRY}/v2/" \
-            | sed -n '1,40p'
-
-      - name: Check Dockerfile
-        run: |
           test -f Dockerfile
           echo "Dockerfile found."
 
@@ -153,8 +169,9 @@ jobs:
           echo "BUILDKIT_HOST=${BUILDKIT_HOST}"
           echo "REGISTRY=${REGISTRY}"
           echo "IMAGE_SHA=${IMAGE_SHA}"
-          echo "IMAGE_EXTERNAL=${IMAGE_EXTERNAL}"
+          echo "IMAGE_LATEST=${IMAGE_LATEST}"
           echo "DOCKER_CONFIG=${DOCKER_CONFIG}"
+          echo "SSL_CERT_FILE=${SSL_CERT_FILE:-not-set}"
 
           buildctl --addr "${BUILDKIT_HOST}" build \
             --progress=plain \
@@ -162,7 +179,7 @@ jobs:
             --local context=. \
             --local dockerfile=. \
             --opt filename=Dockerfile \
-            --output type=image,name="${IMAGE_SHA}",push=true,registry.insecure=true
+            --output type=image,name="${IMAGE_SHA}",push=true
 
       - name: Write Build Summary
         if: always()
@@ -171,8 +188,8 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Internal Push Registry | \`${REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| External Pull Registry | \`${EXTERNAL_REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Internal Image | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| External Pull Image | \`${IMAGE_EXTERNAL}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Registry | \`${REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image SHA | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Latest | \`${IMAGE_LATEST}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
+```
