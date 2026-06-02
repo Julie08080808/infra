@@ -135,7 +135,7 @@ jobs:
           kubectl auth can-i create services -A
           kubectl auth can-i create jobs.batch -A
           kubectl auth can-i get pods -A
-          kubectl auth can-i logs pods -A
+          kubectl auth can-i get pods/log -A
 
           echo "Kubernetes access OK."
 
