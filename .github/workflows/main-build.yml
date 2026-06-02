@@ -276,6 +276,42 @@ jobs:
           echo "SBOM generated: ${SBOM_FILE}"
           ls -lh "${SBOM_FILE}"
 
+      - name: Install Grype
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/bin"
+
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin"
+
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+          "$RUNNER_TEMP/bin/grype" version
+
+      - name: Scan SBOM with Grype
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          GRYPE_JSON="grype-${SHORT_SHA}.json"
+          GRYPE_TABLE="grype-${SHORT_SHA}.txt"
+
+          echo "Scanning SBOM:"
+          echo "${SBOM_FILE}"
+
+          grype "sbom:${SBOM_FILE}" \
+            -o json > "${GRYPE_JSON}"
+
+          grype "sbom:${SBOM_FILE}" \
+            -o table > "${GRYPE_TABLE}"
+
+          echo "GRYPE_JSON=${GRYPE_JSON}" >> "$GITHUB_ENV"
+          echo "GRYPE_TABLE=${GRYPE_TABLE}" >> "$GITHUB_ENV"
+
+          echo "Grype reports generated:"
+          ls -lh "${GRYPE_JSON}" "${GRYPE_TABLE}"
+
       - name: Upload Main Build Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -284,6 +320,8 @@ jobs:
           path: |
             image-metadata.txt
             sbom-*.spdx.json
+            grype-*.json
+            grype-*.txt
           if-no-files-found: warn
 
       - name: Write Build Summary
@@ -298,3 +336,5 @@ jobs:
           echo "| Short SHA | \`${SHORT_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| SBOM | \`${SBOM_FILE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Grype JSON | \`${GRYPE_JSON:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Grype Table | \`${GRYPE_TABLE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
