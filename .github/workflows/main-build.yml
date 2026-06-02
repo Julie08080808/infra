@@ -222,7 +222,35 @@ jobs:
             --local context=. \
             --local dockerfile=. \
             --opt filename=Dockerfile \
+            --metadata-file buildkit-image-metadata.json \
             --output type=image,name="${IMAGE_SHA}",push=true
+
+      - name: Resolve Image Digest
+        run: |
+          set -euo pipefail
+
+          echo "BuildKit metadata:"
+          cat buildkit-image-metadata.json | jq .
+
+          IMAGE_DIGEST_VALUE="$(jq -r '."containerimage.digest" // empty' buildkit-image-metadata.json)"
+
+          if [ -z "${IMAGE_DIGEST_VALUE}" ]; then
+            echo "Failed to resolve image digest from BuildKit metadata."
+            exit 1
+          fi
+
+          IMAGE_DIGEST="${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST_VALUE}"
+
+          echo "IMAGE_DIGEST_VALUE=${IMAGE_DIGEST_VALUE}" >> "$GITHUB_ENV"
+          echo "IMAGE_DIGEST=${IMAGE_DIGEST}" >> "$GITHUB_ENV"
+
+          cat >> image-metadata.txt << EOF
+          IMAGE_DIGEST_VALUE=${IMAGE_DIGEST_VALUE}
+          IMAGE_DIGEST=${IMAGE_DIGEST}
+          EOF
+
+          echo "Resolved image digest:"
+          echo "${IMAGE_DIGEST}"
 
       - name: Install Syft
         run: |
@@ -377,26 +405,36 @@ jobs:
             exit 1
           fi
 
-          echo "Signing image:"
-          echo "${IMAGE_SHA}"
+          if [ -z "${IMAGE_DIGEST:-}" ]; then
+            echo "IMAGE_DIGEST is empty."
+            exit 1
+          fi
+
+          echo "Signing image digest:"
+          echo "${IMAGE_DIGEST}"
 
           cosign sign \
             --yes \
             --key "${COSIGN_KEY_PATH}" \
-            "${IMAGE_SHA}"
+            "${IMAGE_DIGEST}"
 
-          echo "Image signed successfully."
+          echo "Image digest signed successfully."
 
       - name: Verify Image Signature
         run: |
           set -euo pipefail
 
+          if [ -z "${IMAGE_DIGEST:-}" ]; then
+            echo "IMAGE_DIGEST is empty."
+            exit 1
+          fi
+
           echo "Verifying image signature:"
-          echo "${IMAGE_SHA}"
+          echo "${IMAGE_DIGEST}"
 
           cosign verify \
             --key "${COSIGN_PUBLIC_KEY_PATH}" \
-            "${IMAGE_SHA}"
+            "${IMAGE_DIGEST}"
 
           echo "Image signature verified successfully."
           
@@ -407,6 +445,7 @@ jobs:
           name: main-build-artifacts
           path: |
             image-metadata.txt
+            buildkit-image-metadata.json
             sbom-*.spdx.json
             grype-*.json
             grype-*.txt
@@ -420,10 +459,11 @@ jobs:
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Registry | \`${REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Image | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Tag | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Digest | \`${IMAGE_DIGEST:-not-resolved}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Short SHA | \`${SHORT_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| SBOM | \`${SBOM_FILE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Grype JSON | \`${GRYPE_JSON:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Grype Table | \`${GRYPE_TABLE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Cosign | \`signed\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cosign | \`signed and verified by digest\` |" >> "$GITHUB_STEP_SUMMARY"
