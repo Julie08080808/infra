@@ -75,51 +75,30 @@ jobs:
 
       - name: Configure Kubernetes Auth
         env:
-          K8S_ARC_RUNNER_TOKEN: ${{ secrets.K8S_ARC_RUNNER_TOKEN }}
+          K8S_KUBECONFIG_B64: ${{ secrets.K8S_KUBECONFIG_B64 }}
         run: |
           set -euo pipefail
 
-          if [ -z "${K8S_ARC_RUNNER_TOKEN:-}" ]; then
-            echo "K8S_ARC_RUNNER_TOKEN is empty."
-            exit 1
-          fi
-
-          SA_DIR="/var/run/secrets/kubernetes.io/serviceaccount"
-          CA_FILE="${SA_DIR}/ca.crt"
-
-          if [ ! -f "${CA_FILE}" ]; then
-            echo "Kubernetes CA file not found: ${CA_FILE}"
+          if [ -z "${K8S_KUBECONFIG_B64:-}" ]; then
+            echo "K8S_KUBECONFIG_B64 is empty."
             exit 1
           fi
 
           mkdir -p "$RUNNER_TEMP/kube"
 
-          printf "%s" "$K8S_ARC_RUNNER_TOKEN" \
-            | base64 -d \
-            | tr -d '\r\n ' > "$RUNNER_TEMP/kube/token"
+          printf "%s" "$K8S_KUBECONFIG_B64" \
+            | base64 -d > "$RUNNER_TEMP/kube/config"
 
-          echo "Decoded token size:"
-          wc -c "$RUNNER_TEMP/kube/token"
+          chmod 600 "$RUNNER_TEMP/kube/config"
 
-          KUBE_SERVER="https://10.32.21.125:6443"
-          KUBE_TOKEN="$(cat "$RUNNER_TEMP/kube/token")"
-
-          kubectl config set-cluster in-cluster \
-            --server="${KUBE_SERVER}" \
-            --certificate-authority="${CA_FILE}" \
-            --embed-certs=true
-
-          kubectl config set-credentials ci-deployer \
-            --token="${KUBE_TOKEN}"
-
-          kubectl config set-context in-cluster \
-            --cluster=in-cluster \
-            --user=ci-deployer
-
-          kubectl config use-context in-cluster
+          echo "KUBECONFIG=$RUNNER_TEMP/kube/config" >> "$GITHUB_ENV"
+          export KUBECONFIG="$RUNNER_TEMP/kube/config"
 
           echo "Testing Kubernetes API access..."
           kubectl get --raw=/version
+
+          echo "Current context:"
+          kubectl config current-context
 
       - name: Check Kubernetes Access
         run: |
@@ -479,7 +458,7 @@ jobs:
 
           echo "Cosign public key configured."
           grep "BEGIN PUBLIC KEY" "$RUNNER_TEMP/cosign.pub"
-      
+
       - name: Sign Image with Cosign
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
@@ -696,7 +675,7 @@ jobs:
           if [ -n "${DAST_NAMESPACE:-}" ]; then
             kubectl delete namespace "${DAST_NAMESPACE}" --ignore-not-found
           fi
-          
+
       - name: Upload Main Build Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -722,9 +701,9 @@ jobs:
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Registry | \`${REGISTRY}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Image Tag | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image Tag | \`${IMAGE_SHA:-not-created}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Image Digest | \`${IMAGE_DIGEST:-not-resolved}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Short SHA | \`${SHORT_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Short SHA | \`${SHORT_SHA:-not-created}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| SBOM | \`${SBOM_FILE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Grype JSON | \`${GRYPE_JSON:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
