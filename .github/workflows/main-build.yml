@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  REGISTRY: 10.32.20.51:30443
+  REGISTRY: harbor.jlsa.local:30443
   IMAGE_NAME: ci/youtube-music-bot
   BUILDKIT_HOST: tcp://buildkitd.ci-build.svc.cluster.local:1234
 
