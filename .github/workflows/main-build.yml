@@ -224,12 +224,44 @@ jobs:
             --opt filename=Dockerfile \
             --output type=image,name="${IMAGE_SHA}",push=true
 
-      - name: Upload Image Metadata
+            - name: Install Syft
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/bin"
+
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin"
+
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+          "$RUNNER_TEMP/bin/syft" version
+
+      - name: Generate Image SBOM
+        run: |
+          set -euo pipefail
+
+          SBOM_FILE="sbom-${SHORT_SHA}.spdx.json"
+
+          echo "Generating SBOM for image:"
+          echo "${IMAGE_SHA}"
+
+          syft "${IMAGE_SHA}" \
+            -o spdx-json="${SBOM_FILE}"
+
+          echo "SBOM_FILE=${SBOM_FILE}" >> "$GITHUB_ENV"
+
+          echo "SBOM generated: ${SBOM_FILE}"
+          ls -lh "${SBOM_FILE}"
+
+      - name: Upload Main Build Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: main-build-image-metadata
-          path: image-metadata.txt
+          name: main-build-artifacts
+          path: |
+            image-metadata.txt
+            sbom-*.spdx.json
           if-no-files-found: warn
 
       - name: Write Build Summary
@@ -243,3 +275,4 @@ jobs:
           echo "| Image | \`${IMAGE_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Short SHA | \`${SHORT_SHA}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| BuildKit Host | \`${BUILDKIT_HOST}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SBOM | \`${SBOM_FILE:-not-generated}\` |" >> "$GITHUB_STEP_SUMMARY"
