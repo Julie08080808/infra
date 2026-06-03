@@ -33,7 +33,7 @@ variable "arc_chart_version" {
 variable "runner_image" {
   description = "Custom ARC runner image"
   type        = string
-  default     = "10.32.20.51:30443/ci/arc-runner:v0.3.0"
+  default     = "harbor.jlsa.local:30443/ci/arc-runner:v0.4.0"
 }
 
 variable "image_pull_secret_name" {
