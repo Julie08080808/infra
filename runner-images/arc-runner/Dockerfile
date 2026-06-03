@@ -1,6 +1,5 @@
-FROM 10.32.20.51:30443/ci/buildkit:rootless AS buildkit
-
-FROM ghcr.io/actions/actions-runner:latest
+FROM harbor.jlsa.local:30443/ci/buildkit:rootless AS buildkit
+FROM ghcr.io/actions/actions-runner:2.334.0
 
 USER root
 
@@ -16,6 +15,11 @@ RUN apt-get update \
         unzip \
         tar \
         gzip \
+	kubectl \
+	cosign \
+	syft \
+	grype \
+	yq \
         python3 \
         python3-pip \
         python3-venv \
