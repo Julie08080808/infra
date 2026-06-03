@@ -30,9 +30,7 @@ env:
 
   ZAP_IMAGE: harbor.jlsa.local:30443/ci/zap-stable:stable
 
-  # 過渡模式：WARN 只報告，不阻擋 PR。
-  # 等 security headers 修完後，改成 "true"。
-  PR_DAST_FAIL_ON_WARN: "false"
+  PR_DAST_FAIL_ON_WARN: "true"
 
 jobs:
   pr-dast:
