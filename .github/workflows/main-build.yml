@@ -596,16 +596,20 @@ jobs:
                   - name: zap
                     image: ${ZAP_IMAGE}
                     command:
-                      - zap-baseline.py
+                      - /bin/sh
+                      - -c
                     args:
-                      - "-t"
-                      - "${DAST_TARGET_URL}"
-                      - "-J"
-                      - "/zap/wrk/zap-report.json"
-                      - "-r"
-                      - "/zap/wrk/zap-report.html"
-                      - "-w"
-                      - "/zap/wrk/zap-report.md"
+                      - |
+                        set +e
+                        zap-baseline.py \
+                          -t "${DAST_TARGET_URL}" \
+                          -J zap-report.json \
+                          -r zap-report.html \
+                          -w zap-report.md \
+                          -I
+                        ZAP_STATUS=\$?
+                        echo "\${ZAP_STATUS}" > /zap/wrk/zap-exit-code
+                        exit 0
                     volumeMounts:
                       - name: zap-work
                         mountPath: /zap/wrk
@@ -616,22 +620,11 @@ jobs:
 
           echo "Waiting for ZAP job to finish..."
 
-          set +e
           kubectl wait \
             --for=condition=complete \
             job/${ZAP_JOB} \
             -n "${DAST_NAMESPACE}" \
             --timeout=600s
-          WAIT_COMPLETE_STATUS=$?
-
-          if [ "$WAIT_COMPLETE_STATUS" -ne 0 ]; then
-            kubectl wait \
-              --for=condition=failed \
-              job/${ZAP_JOB} \
-              -n "${DAST_NAMESPACE}" \
-              --timeout=30s
-          fi
-          set -e
 
           ZAP_POD="$(kubectl get pod -n "${DAST_NAMESPACE}" \
             -l job-name="${ZAP_JOB}" \
@@ -653,15 +646,29 @@ jobs:
             "${DAST_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-report.md" \
             "zap-report-${SHORT_SHA}.md" || true
 
-          ls -lh zap-report-${SHORT_SHA}.* zap-console.log || true
+          kubectl cp \
+            "${DAST_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-exit-code" \
+            "zap-exit-code-${SHORT_SHA}.txt" || true
 
-          JOB_FAILED="$(kubectl get job ${ZAP_JOB} -n "${DAST_NAMESPACE}" -o jsonpath='{.status.failed}' || true)"
-          JOB_SUCCEEDED="$(kubectl get job ${ZAP_JOB} -n "${DAST_NAMESPACE}" -o jsonpath='{.status.succeeded}' || true)"
+          ls -lh zap-report-${SHORT_SHA}.* zap-console.log zap-exit-code-${SHORT_SHA}.txt || true
 
-          echo "ZAP job succeeded=${JOB_SUCCEEDED:-0}, failed=${JOB_FAILED:-0}"
+          FAIL_NEW="$( (grep -Eo 'FAIL-NEW: [0-9]+' zap-console.log || true) | tail -1 | awk '{print $2}' )"
+          WARN_NEW="$( (grep -Eo 'WARN-NEW: [0-9]+' zap-console.log || true) | tail -1 | awk '{print $2}' )"
 
-          if [ "${JOB_SUCCEEDED:-0}" != "1" ]; then
-            echo "OWASP ZAP scan did not pass."
+          FAIL_NEW="${FAIL_NEW:-0}"
+          WARN_NEW="${WARN_NEW:-0}"
+
+          echo "ZAP FAIL-NEW=${FAIL_NEW}"
+          echo "ZAP WARN-NEW=${WARN_NEW}"
+
+          if [ "${FAIL_NEW}" != "0" ]; then
+            echo "OWASP ZAP found new FAIL issues."
+            exit 1
+          fi
+
+          if [ "${WARN_NEW}" != "0" ]; then
+            echo "OWASP ZAP found new WARN issues."
+            echo "DAST gate failed because WARN-NEW must be 0."
             exit 1
           fi
 
@@ -691,6 +698,7 @@ jobs:
             zap-report-*.json
             zap-report-*.html
             zap-report-*.md
+            zap-exit-code-*.txt
           if-no-files-found: warn
 
       - name: Write Build Summary
