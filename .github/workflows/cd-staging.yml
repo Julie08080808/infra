@@ -32,6 +32,10 @@ env:
   ARGOCD_NAMESPACE: argocd
   ARGOCD_STAGING_APP: youtube-music-bot-staging
 
+  GITOPS_REPO_URL: https://github.com/Julie08080808/youtube-music-bot-gitops.git
+  GITOPS_REPO_BRANCH: main
+  GITOPS_STAGING_PATH: apps/youtube-music-bot/overlays/staging
+
 jobs:
   deploy-staging:
     name: Update GitOps Staging
