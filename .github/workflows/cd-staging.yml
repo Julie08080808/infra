@@ -145,13 +145,22 @@ jobs:
 
           echo "Checking whether NodePort ${STAGING_NODE_PORT} is already used..."
 
-          if kubectl get svc -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{range .spec.ports[*]}{.nodePort}{" "}{end}{"\n"}{end}' \
-            | grep -w "${STAGING_NODE_PORT}"; then
-            echo "NodePort ${STAGING_NODE_PORT} is already used."
-            exit 1
-          fi
+          USED_BY="$(kubectl get svc -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{range .spec.ports[*]}{.nodePort}{" "}{end}{"\n"}{end}' \
+            | awk -v port="${STAGING_NODE_PORT}" '$0 ~ port {print $1 "/" $2}' || true)"
 
-          echo "NodePort ${STAGING_NODE_PORT} is available."
+          if [ -n "${USED_BY}" ]; then
+            echo "NodePort ${STAGING_NODE_PORT} is used by:"
+            echo "${USED_BY}"
+
+            if echo "${USED_BY}" | grep -qx "${STAGING_NAMESPACE}/${APP_NAME}"; then
+              echo "NodePort is already used by the same staging service. OK."
+            else
+              echo "NodePort ${STAGING_NODE_PORT} is used by another service."
+              exit 1
+            fi
+          else
+            echo "NodePort ${STAGING_NODE_PORT} is available."
+          fi
 
       - name: Deploy Staging to VM3
         env:
