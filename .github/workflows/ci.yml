@@ -152,7 +152,7 @@ jobs:
           echo "biome=${{ steps.biome.outcome }}" >> "$GITHUB_OUTPUT"
           echo "tsc=${{ steps.tsc.outcome }}" >> "$GITHUB_OUTPUT"
           echo "semgrep=${{ steps.semgrep.outcome }}" >> "$GITHUB_OUTPUT"
-
+          
       - name: Upload Static Analysis Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,7 +161,9 @@ jobs:
           path: |
             biome-report.txt
             tsc-report.txt
-            semgrep-report.txt
+            semgrep-report.json
+            semgrep-console.txt
+            semgrep-status.txt
           if-no-files-found: warn
 
   build-check:
