@@ -48,22 +48,11 @@ jobs:
 
           echo "FOSSA_API_KEY is configured."
 
-      - name: FOSSA Analyze and Test PR Diff
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Run FOSSA Analyze and Test
         uses: fossas/fossa-action@v1.9.0
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
           run-tests: true
-          test-diff-revision: ${{ github.event.pull_request.base.sha }}
-          project: youtube-music-bot
-
-      - name: FOSSA Analyze and Test Main
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: fossas/fossa-action@v1.9.0
-        with:
-          api-key: ${{ secrets.FOSSA_API_KEY }}
-          run-tests: true
-          project: youtube-music-bot
 
       - name: Write FOSSA Summary
         if: always()
@@ -73,7 +62,7 @@ jobs:
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Purpose | \`License / supply chain gate\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Project | \`youtube-music-bot\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Event | \`${{ github.event_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Branch | \`${{ github.head_ref || github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Blocks PR | \`true\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Diff mode | \`disabled during initial bootstrap\` |" >> "$GITHUB_STEP_SUMMARY"
