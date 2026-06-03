@@ -1,0 +1,36 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-ci-image-signature
+  annotations:
+    policies.kyverno.io/title: Verify CI Image Signature
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: false
+  rules:
+    - name: verify-ci-images-signed-by-cosign
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "harbor.jlsa.local:30443/ci/*"
+          mutateDigest: false
+          useCache: false
+          imageRegistryCredentials:
+            allowInsecureRegistry: false
+            secrets:
+              - kyverno-test/harbor-registry-secret
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO7JLqV3WB0H5Pa4IwEUcseqWpme7
+                      VfxQGu2ZrUdmFF5gh0jvJbHR9BxIARTpRsmEg0g58e/de+j8/Z1qT7BaAQ==
+                      -----END PUBLIC KEY-----

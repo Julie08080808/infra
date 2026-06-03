@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: signed-image-test
+  namespace: kyverno-test
+spec:
+  imagePullSecrets:
+    - name: harbor-registry-secret
+  containers:
+    - name: app
+      image: harbor.jlsa.local:30443/ci/youtube-music-bot@sha256:ead73ea681c4f08fc5cbd13e4c96d31cf2e4b4d4ca9871bb7e7d10f6fec15817
+      ports:
+        - containerPort: 3000
