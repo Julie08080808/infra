@@ -26,12 +26,11 @@ env:
   STAGING_NAMESPACE: staging-youtube-music-bot
   STAGING_NODE_PORT: "31081"
 
+  STAGING_DAST_FAIL_ON_WARN: "true"
+  ZAP_IMAGE: harbor.jlsa.local:30443/ci/zap-stable:stable
+
   ARGOCD_NAMESPACE: argocd
   ARGOCD_STAGING_APP: youtube-music-bot-staging
-
-  GITOPS_REPO_URL: https://github.com/Julie08080808/youtube-music-bot-gitops.git
-  GITOPS_REPO_BRANCH: main
-  GITOPS_STAGING_PATH: apps/youtube-music-bot/overlays/staging
 
 jobs:
   deploy-staging:
@@ -326,6 +325,186 @@ jobs:
           kubectl describe deployment "${APP_NAME}" -n "${STAGING_NAMESPACE}"
           exit 1
 
+      - name: Run OWASP ZAP Staging DAST
+        run: |
+          set -euo pipefail
+
+          ZAP_JOB="zap-staging-baseline"
+          STAGING_DAST_TARGET_URL="http://${APP_NAME}.${STAGING_NAMESPACE}.svc.cluster.local:${APP_PORT}"
+
+          echo "Running OWASP ZAP against staging:"
+          echo "${STAGING_DAST_TARGET_URL}"
+          echo "ZAP image: ${ZAP_IMAGE}"
+          echo "STAGING_DAST_FAIL_ON_WARN=${STAGING_DAST_FAIL_ON_WARN}"
+
+          kubectl delete job "${ZAP_JOB}" \
+            -n "${STAGING_NAMESPACE}" \
+            --ignore-not-found \
+            --wait=false || true
+
+          cat << EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${ZAP_JOB}
+            namespace: ${STAGING_NAMESPACE}
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                imagePullSecrets:
+                  - name: harbor-registry-secret
+                containers:
+                  - name: zap
+                    image: ${ZAP_IMAGE}
+                    command:
+                      - /bin/sh
+                      - -c
+                    args:
+                      - |
+                        set +e
+                        cd /zap/wrk
+
+                        zap-baseline.py \
+                          -t "${STAGING_DAST_TARGET_URL}" \
+                          -J zap-staging-report.json \
+                          -r zap-staging-report.html \
+                          -w zap-staging-report.md
+
+                        ZAP_STATUS=\$?
+                        echo "\${ZAP_STATUS}" > /zap/wrk/zap-staging-exit-code.txt
+                        echo "ZAP staging scan finished with exit code: \${ZAP_STATUS}"
+                        echo "Keeping container alive for artifact copy..."
+                        sleep 300
+                        exit 0
+                    volumeMounts:
+                      - name: zap-work
+                        mountPath: /zap/wrk
+                volumes:
+                  - name: zap-work
+                    emptyDir: {}
+          EOF
+
+          trap 'kubectl delete job "${ZAP_JOB}" -n "${STAGING_NAMESPACE}" --ignore-not-found --wait=false >/dev/null 2>&1 || true' EXIT
+
+          echo "Waiting for ZAP pod..."
+
+          ZAP_POD=""
+          for i in $(seq 1 60); do
+            ZAP_POD="$(kubectl get pod -n "${STAGING_NAMESPACE}" \
+              -l job-name="${ZAP_JOB}" \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+
+            if [ -n "${ZAP_POD}" ]; then
+              PHASE="$(kubectl get pod -n "${STAGING_NAMESPACE}" "${ZAP_POD}" -o jsonpath='{.status.phase}' || true)"
+              echo "ZAP pod phase: ${PHASE}"
+
+              if [ "${PHASE}" = "Running" ]; then
+                break
+              fi
+            fi
+
+            sleep 5
+          done
+
+          if [ -z "${ZAP_POD}" ]; then
+            echo "Failed to find ZAP pod."
+            kubectl get pods -n "${STAGING_NAMESPACE}" -o wide
+            exit 1
+          fi
+
+          echo "ZAP pod: ${ZAP_POD}"
+
+          echo "Waiting for ZAP scan output files..."
+
+          SCAN_DONE="false"
+          for i in $(seq 1 120); do
+            if kubectl exec -n "${STAGING_NAMESPACE}" "${ZAP_POD}" -- test -f /zap/wrk/zap-staging-exit-code.txt; then
+              echo "ZAP staging scan completed."
+              SCAN_DONE="true"
+              break
+            fi
+
+            echo "ZAP staging scan still running... ${i}"
+            sleep 5
+          done
+
+          if [ "${SCAN_DONE}" != "true" ]; then
+            echo "ZAP staging scan did not finish in time."
+            kubectl logs -n "${STAGING_NAMESPACE}" "${ZAP_POD}" || true
+            exit 1
+          fi
+
+          kubectl logs -n "${STAGING_NAMESPACE}" "${ZAP_POD}" | tee zap-staging-console.log
+
+          kubectl cp \
+            "${STAGING_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-staging-report.json" \
+            "zap-staging-report-${SHORT_SHA}.json" || true
+
+          kubectl cp \
+            "${STAGING_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-staging-report.html" \
+            "zap-staging-report-${SHORT_SHA}.html" || true
+
+          kubectl cp \
+            "${STAGING_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-staging-report.md" \
+            "zap-staging-report-${SHORT_SHA}.md" || true
+
+          kubectl cp \
+            "${STAGING_NAMESPACE}/${ZAP_POD}:/zap/wrk/zap-staging-exit-code.txt" \
+            "zap-staging-exit-code-${SHORT_SHA}.txt" || true
+
+          ls -lh zap-staging-* || true
+
+          FAIL_NEW="$( (grep -Eo 'FAIL-NEW: [0-9]+' zap-staging-console.log || true) | tail -1 | awk '{print $2}' )"
+          WARN_NEW="$( (grep -Eo 'WARN-NEW: [0-9]+' zap-staging-console.log || true) | tail -1 | awk '{print $2}' )"
+
+          FAIL_NEW="${FAIL_NEW:-0}"
+          WARN_NEW="${WARN_NEW:-0}"
+
+          echo "ZAP staging FAIL-NEW=${FAIL_NEW}"
+          echo "ZAP staging WARN-NEW=${WARN_NEW}"
+
+          if ! grep -q 'FAIL-NEW:' zap-staging-console.log; then
+            echo "ZAP summary was not found in console log."
+            echo "Treating staging DAST as failed."
+            exit 1
+          fi
+
+          if [ "${FAIL_NEW}" != "0" ]; then
+            echo "OWASP ZAP staging scan found FAIL issues."
+            echo "Staging DAST gate failed. Production will not be triggered."
+            exit 1
+          fi
+
+          if [ "${WARN_NEW}" != "0" ]; then
+            echo "OWASP ZAP staging scan found WARN issues."
+            echo "STAGING_DAST_FAIL_ON_WARN=${STAGING_DAST_FAIL_ON_WARN}"
+
+            if [ "${STAGING_DAST_FAIL_ON_WARN}" = "true" ]; then
+              echo "Staging DAST gate failed because WARN-NEW must be 0."
+              echo "Production will not be triggered."
+              exit 1
+            fi
+
+            echo "WARN issues are currently non-blocking."
+          fi
+
+          echo "OWASP ZAP staging DAST passed."
+
+      - name: Upload Staging DAST Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-dast-artifacts
+          path: |
+            zap-staging-console.log
+            zap-staging-report-*.json
+            zap-staging-report-*.html
+            zap-staging-report-*.md
+            zap-staging-exit-code-*.txt
+          if-no-files-found: warn
+
       - name: Write Staging Summary
         if: always()
         run: |
@@ -342,3 +521,5 @@ jobs:
           echo "| Expected Node | \`node3\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Cluster URL | \`http://${APP_NAME}.${STAGING_NAMESPACE}.svc.cluster.local:${APP_PORT}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| NodePort | \`${STAGING_NODE_PORT}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Staging DAST | \`OWASP ZAP baseline\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Staging DAST Fail on WARN | \`${STAGING_DAST_FAIL_ON_WARN}\` |" >> "$GITHUB_STEP_SUMMARY"
