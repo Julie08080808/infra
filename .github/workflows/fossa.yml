@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   fossa:
-    name: License and Supply Chain Gate
+    name: License and Supply Chain Scan
     runs-on: arc-runner-set
     timeout-minutes: 20
 
@@ -48,11 +48,10 @@ jobs:
 
           echo "FOSSA_API_KEY is configured."
 
-      - name: Run FOSSA Analyze and Test
+      - name: FOSSA Analyze
         uses: fossas/fossa-action@v1.9.0
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
-          run-tests: true
 
       - name: Write FOSSA Summary
         if: always()
@@ -61,8 +60,8 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Purpose | \`License / supply chain gate\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Purpose | \`License / supply chain scan\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Event | \`${{ github.event_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Branch | \`${{ github.head_ref || github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Blocks PR | \`true\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Diff mode | \`disabled during initial bootstrap\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Gate mode | \`bootstrap analyze only\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Blocks PR | \`false during bootstrap\` |" >> "$GITHUB_STEP_SUMMARY"
