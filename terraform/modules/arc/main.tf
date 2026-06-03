@@ -62,14 +62,14 @@ resource "helm_release" "arc_runner_set" {
 
               resources = {
                 requests = {
-                  cpu    = var.runner_cpu_request
-                  memory = var.runner_memory_request
+                  cpu                 = var.runner_cpu_request
+                  memory              = var.runner_memory_request
                   "ephemeral-storage" = var.runner_ephemeral_storage_request
                 }
 
                 limits = {
-                  cpu    = var.runner_cpu_limit
-                  memory = var.runner_memory_limit
+                  cpu                 = var.runner_cpu_limit
+                  memory              = var.runner_memory_limit
                   "ephemeral-storage" = var.runner_ephemeral_storage_limit
                 }
               }

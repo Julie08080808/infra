@@ -90,3 +90,11 @@ module "arc" {
     module.secrets
   ]
 }
+
+module "kyverno" {
+  source = "./modules/kyverno"
+
+  depends_on = [
+    module.namespaces
+  ]
+}

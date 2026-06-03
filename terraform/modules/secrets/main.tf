@@ -1,3 +1,21 @@
+locals {
+  harbor_primary_registry = replace(var.harbor_url, "https://", "")
+
+  harbor_registry_hosts = distinct(concat(
+    [local.harbor_primary_registry],
+    var.harbor_registry_aliases
+  ))
+
+  harbor_docker_auths = {
+    for registry_host in local.harbor_registry_hosts :
+    registry_host => {
+      username = var.harbor_runner_username
+      password = var.harbor_runner_password
+      auth     = base64encode("${var.harbor_runner_username}:${var.harbor_runner_password}")
+    }
+  }
+}
+
 resource "kubernetes_secret" "harbor_registry_secret" {
   metadata {
     name      = "harbor-registry-secret"
@@ -8,14 +26,7 @@ resource "kubernetes_secret" "harbor_registry_secret" {
 
   data = {
     ".dockerconfigjson" = jsonencode({
-      auths = {
-        # 自動濾除 https://，變成 K8s 認得的 10.32.20.51:30443
-        (replace(var.harbor_url, "https://", "")) = {
-          username = var.harbor_runner_username
-          password = var.harbor_runner_password
-          auth     = base64encode("${var.harbor_runner_username}:${var.harbor_runner_password}")
-        }
-      }
+      auths = local.harbor_docker_auths
     })
   }
 }

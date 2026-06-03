@@ -13,3 +13,8 @@ variable "harbor_runner_password" {
   type        = string
   sensitive   = true
 }
+variable "harbor_registry_aliases" {
+  description = "Additional Harbor registry hostnames for docker pull secrets"
+  type        = list(string)
+  default     = ["harbor.jlsa.local:30443"]
+}
