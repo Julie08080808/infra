@@ -56,3 +56,9 @@ variable "harbor_runner_password" {
   sensitive   = true
 }
 
+variable "gitops_repo_token" {
+  description = "GitHub PAT for Argo CD to read the private GitOps repository"
+  type        = string
+  sensitive   = true
+}
+

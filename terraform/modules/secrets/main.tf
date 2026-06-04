@@ -30,3 +30,21 @@ resource "kubernetes_secret" "harbor_registry_secret" {
     })
   }
 }
+
+resource "kubernetes_secret" "harbor_registry_secret_extra" {
+  for_each = toset(var.extra_image_pull_secret_namespaces)
+
+  metadata {
+    name      = "harbor-registry-secret"
+    namespace = each.value
+  }
+
+  type = "kubernetes.io/dockerconfigjson"
+
+  data = {
+    ".dockerconfigjson" = jsonencode({
+      auths = local.harbor_docker_auths
+    })
+  }
+}
+

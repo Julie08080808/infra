@@ -18,3 +18,14 @@ variable "harbor_registry_aliases" {
   type        = list(string)
   default     = ["harbor.jlsa.local:30443"]
 }
+
+variable "extra_image_pull_secret_namespaces" {
+  description = "Additional namespaces that need Harbor imagePullSecret"
+  type        = list(string)
+
+  default = [
+    "staging-youtube-music-bot",
+    "production-youtube-music-bot"
+  ]
+}
+

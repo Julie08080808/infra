@@ -98,3 +98,20 @@ module "kyverno" {
     module.namespaces
   ]
 }
+
+module "runtimeclass" {
+  source = "./modules/runtimeclass"
+}
+
+module "argocd_apps" {
+  source = "./modules/argocd_apps"
+
+  gitops_repo_url   = "https://github.com/Julie08080808/youtube-music-bot-gitops.git"
+  github_username   = "Julie08080808"
+  gitops_repo_token = var.gitops_repo_token
+
+  depends_on = [
+    module.kyverno
+  ]
+}
+
