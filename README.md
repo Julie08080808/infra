@@ -36,9 +36,6 @@ production approval
     ↓
 production promotion（同一個 digest，不重新 build）
 ```
-
-每一層都有安全 gate，任何一層出問題就阻止往下走。
-
 ---
 
 ### 三台 VM 的分工
@@ -47,7 +44,7 @@ production promotion（同一個 digest，不重新 build）
 VM1 — Control Plane / 管理入口
 ├── Kubernetes control plane（kube-apiserver、scheduler、controller-manager、etcd）
 ├── Terraform / Helm 管理入口
-├── Argo CD（GitOps 部署引擎）
+├── Argo CD（GitOps 部署工具）
 └── Kyverno（K8s admission control）
 
 VM2 — CI Worker / Security Testing
