@@ -1,16 +1,24 @@
-# Terraform state（包含敏感資料）
-*.tfstate
-*.tfstate.backup
+# Terraform local working directory
 .terraform/
-.terraform.lock.hcl
+
+# Terraform state files - may contain sensitive data
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.*
+
+# Terraform variable files - may contain secrets
 *.tfvars
 terraform.tfvars
 !terraform.tfvars.example
 
-# 敏感變數檔案
-terraform.tfvars
-*.tfvars
-
-# 暫存檔案
+# Terraform plan / crash files
 *.tfplan
 crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
