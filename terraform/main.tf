@@ -106,7 +106,7 @@ module "runtimeclass" {
 module "argocd_apps" {
   source = "./modules/argocd_apps"
 
-  gitops_repo_url   = "https://github.com/Julie08080808/youtube-music-bot-gitops.git"
+  gitops_repo_url   = "https://github.com/Julie08080808/DevSecOps-CI-CD-Pipeline.git"
   github_username   = "Julie08080808"
   gitops_repo_token = var.gitops_repo_token
 
