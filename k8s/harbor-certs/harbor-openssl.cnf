@@ -2,17 +2,15 @@
 default_bits       = 2048
 prompt             = no
 default_md         = sha256
-distinguished_name = req_distinguished_name
+distinguished_name = dn
 req_extensions     = v3_req
 
-[req_distinguished_name]
+[dn]
 CN = harbor.jlsa.local
 
 [v3_req]
-keyUsage = critical, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = harbor.jlsa.local
-IP.1 = 10.32.20.51
+IP.1  = 10.32.20.51
