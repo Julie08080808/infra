@@ -83,7 +83,7 @@ module "arc" {
   github_app_installation_id = var.github_app_installation_id
   github_app_private_key     = var.github_app_private_key
   github_owner               = var.github_owner
-  github_repo                = "youtube-music-bot"
+  github_repo = "DevSecOps_CI-CD_Pipeline"
 
   depends_on = [
     module.namespaces,
