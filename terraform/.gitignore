@@ -22,3 +22,26 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# Terraform local/state files
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+
+# Private keys / generated cert files
+*.key
+*.srl
+
+# Harbor secret backup
+k8s/harbor-certs/harbor-nginx-backup-*.yaml
+
+# Kubernetes secret files
+k8s/kyverno/*secret*.yaml
+k8s/kyverno/*token*.yaml
+
+# Local backup files
+*.backup
+*.bak
